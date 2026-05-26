@@ -136,36 +136,55 @@ fun HomeScreen(
             }
 
             else -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(BlackBg)
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = if (adaptive.isCompactWidth) 78.dp else 86.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (adaptive.isCompactWidth) 14.dp else 18.dp)
                 ) {
-                    HomeHero(
-                        adaptive = adaptive,
-                        onOpenSearch = onOpenSearch
-                    )
+                    item {
+                        HomeHero(
+                            adaptive = adaptive,
+                            onOpenSearch = onOpenSearch
+                        )
+                    }
 
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(bottom = if (adaptive.isCompactWidth) 78.dp else 86.dp),
-                        verticalArrangement = Arrangement.spacedBy(if (adaptive.isCompactWidth) 14.dp else 18.dp)
-                    ) {
-                        if (vm.esAdmin) {
-                            item {
-                                Text(
-                                    text = "Modo administrador",
-                                    color = Purple,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
+                    if (vm.esAdmin) {
+                        item {
+                            Text(
+                                text = "Modo administrador",
+                                color = Purple,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+                    }
+
+                    itemsIndexed(productRows, key = { index, _ -> "home_row_$index" }) { rowIndex, row ->
+                        if (adaptive.gridColumns == 1) {
+                            row.firstOrNull()?.let { producto ->
+                                HomeProductTile(
+                                    producto = producto,
+                                    imageHeight = homeCardHeightForRow(
+                                        rowIndex = rowIndex,
+                                        columns = adaptive.gridColumns,
+                                        compact = adaptive.isCompactWidth
+                                    ),
+                                    compact = adaptive.isCompactWidth,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = adaptive.horizontalPadding),
+                                    onClick = { onProductoClick(producto) }
                                 )
                             }
-                        }
-
-                        itemsIndexed(productRows, key = { index, _ -> "home_row_$index" }) { rowIndex, row ->
-                            if (adaptive.gridColumns == 1) {
-                                row.firstOrNull()?.let { producto ->
+                        } else {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = adaptive.horizontalPadding),
+                                horizontalArrangement = Arrangement.spacedBy(adaptive.gridSpacing)
+                            ) {
+                                row.forEach { producto ->
                                     HomeProductTile(
                                         producto = producto,
                                         imageHeight = homeCardHeightForRow(
@@ -174,35 +193,12 @@ fun HomeScreen(
                                             compact = adaptive.isCompactWidth
                                         ),
                                         compact = adaptive.isCompactWidth,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = adaptive.horizontalPadding),
+                                        modifier = Modifier.weight(1f),
                                         onClick = { onProductoClick(producto) }
                                     )
                                 }
-                            } else {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = adaptive.horizontalPadding),
-                                    horizontalArrangement = Arrangement.spacedBy(adaptive.gridSpacing)
-                                ) {
-                                    row.forEach { producto ->
-                                        HomeProductTile(
-                                            producto = producto,
-                                            imageHeight = homeCardHeightForRow(
-                                                rowIndex = rowIndex,
-                                                columns = adaptive.gridColumns,
-                                                compact = adaptive.isCompactWidth
-                                            ),
-                                            compact = adaptive.isCompactWidth,
-                                            modifier = Modifier.weight(1f),
-                                            onClick = { onProductoClick(producto) }
-                                        )
-                                    }
-                                    if (row.size == 1) {
-                                        Spacer(modifier = Modifier.weight(1f))
-                                    }
+                                if (row.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
                                 }
                             }
                         }
