@@ -6,6 +6,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -59,6 +62,7 @@ import coil.request.ImageRequest
 import com.example.fkaeh.ui.theme.customPurple
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ProductoDetalleScreen(
     producto: Producto,
@@ -67,6 +71,7 @@ fun ProductoDetalleScreen(
     onGoToChat: () -> Unit,
     onBack: () -> Unit
 ) {
+    val adaptive = rememberAdaptiveLayout()
     val context = LocalContext.current
     val density = LocalDensity.current
     val pagerScope = rememberCoroutineScope()
@@ -90,6 +95,11 @@ fun ProductoDetalleScreen(
     val esPropio = vm.currentUser?.id_usuario == producto.idVendedor
     val scroll = rememberScrollState()
     var offerText by remember(producto.id) { mutableStateOf("") }
+    val heroHeight = when {
+        adaptive.isShortHeight -> 340.dp
+        adaptive.isCompactWidth -> 380.dp
+        else -> 480.dp
+    }
 
     Box(
         modifier = Modifier
@@ -97,7 +107,7 @@ fun ProductoDetalleScreen(
             .background(BlackBg)
     ) {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(scroll)) {
-            Box(modifier = Modifier.fillMaxWidth().height(480.dp)) {
+            Box(modifier = Modifier.fillMaxWidth().height(heroHeight)) {
                 if (fotos.isNotEmpty()) {
                     HorizontalPager(
                         state = pagerState,
@@ -195,7 +205,7 @@ fun ProductoDetalleScreen(
                                 model = url,
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .size(64.dp)
+                                    .size(if (adaptive.isCompactWidth) 56.dp else 64.dp)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color(0xFF151515))
                                     .clickable {
@@ -216,13 +226,14 @@ fun ProductoDetalleScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = producto.nombre,
-                            fontSize = 26.sp,
+                            fontSize = if (adaptive.isCompactWidth) 22.sp else 26.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color.White
+                            color = Color.White,
+                            maxLines = 2
                         )
                         Text(
                             text = if (producto.nombreVendedor.isNotBlank()) "Subido por ${producto.nombreVendedor}" else "FKAEH",
-                            fontSize = 14.sp,
+                            fontSize = if (adaptive.isCompactWidth) 13.sp else 14.sp,
                             color = Color.Gray,
                             letterSpacing = 1.sp
                         )
@@ -230,7 +241,7 @@ fun ProductoDetalleScreen(
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = "%.0f€".format(producto.precio),
-                            fontSize = 28.sp,
+                            fontSize = if (adaptive.isCompactWidth) 24.sp else 28.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White
                         )
@@ -278,7 +289,7 @@ fun ProductoDetalleScreen(
                                 enCarrito -> "✓ AÑADIDO AL CARRITO"
                                 else -> "PÍDELO YA"
                             },
-                            fontSize = 15.sp,
+                            fontSize = if (adaptive.isCompactWidth) 14.sp else 15.sp,
                             fontWeight = FontWeight.Black,
                             color = if (enCarrito && !esPropio) Color.Black else Color.White
                         )
@@ -321,7 +332,7 @@ fun ProductoDetalleScreen(
                             )
                         )
 
-                        Spacer(Modifier.size(8.dp))
+                        Spacer(Modifier.size(if (adaptive.isCompactWidth) 6.dp else 8.dp))
 
                         Box(
                             modifier = Modifier
@@ -353,9 +364,10 @@ fun ProductoDetalleScreen(
                 }
 
                 if (producto.categoriaNombre.isNotBlank() || producto.estadoPrenda.isNotBlank()) {
-                    Row(
+                    DetailMetaFlow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalSpacing = 8.dp,
+                        verticalSpacing = 8.dp
                     ) {
                         if (producto.categoriaNombre.isNotBlank()) {
                             Box(
@@ -415,5 +427,22 @@ fun ProductoDetalleScreen(
                 Spacer(Modifier.height(80.dp))
             }
         }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DetailMetaFlow(
+    modifier: Modifier = Modifier,
+    horizontalSpacing: androidx.compose.ui.unit.Dp,
+    verticalSpacing: androidx.compose.ui.unit.Dp,
+    content: @Composable FlowRowScope.() -> Unit
+) {
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(horizontalSpacing),
+        verticalArrangement = Arrangement.spacedBy(verticalSpacing)
+    ) {
+        content()
     }
 }

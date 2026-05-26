@@ -43,7 +43,12 @@ fun ProductoItem(
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val adaptive = rememberAdaptiveLayout()
     val context = LocalContext.current
+    val imageHeight = if (adaptive.isCompactWidth) 160.dp else 180.dp
+    val titleSize = if (adaptive.isCompactWidth) 12.sp else 13.sp
+    val metaSize = if (adaptive.isCompactWidth) 10.sp else 11.sp
+    val priceSize = if (adaptive.isCompactWidth) 12.sp else 13.sp
 
     val fotoUrlCompleta = remember(producto.fotoUrls) {
         producto.fotoUrls.firstOrNull()?.let {
@@ -73,13 +78,13 @@ fun ProductoItem(
                                 .build(),
                             contentDescription = producto.nombre,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().height(180.dp)
+                            modifier = Modifier.fillMaxWidth().height(imageHeight)
                         )
                     } else {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(180.dp)
+                                .height(imageHeight)
                                 .background(Color(0xFF1A1A1A)),
                             contentAlignment = Alignment.Center
                         ) {
@@ -97,7 +102,7 @@ fun ProductoItem(
                     onClick = onToggleFavorito,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(8.dp)
+                        .padding(if (adaptive.isCompactWidth) 6.dp else 8.dp)
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.45f))
                 ) {
@@ -112,15 +117,15 @@ fun ProductoItem(
             Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
                 Text(
                     text = producto.nombre,
-                    fontSize = 13.sp,
+                    fontSize = titleSize,
                     color = Color.White,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (producto.nombreVendedor.isNotBlank()) {
                     Text(
                         text = "de ${producto.nombreVendedor}",
-                        fontSize = 11.sp,
+                        fontSize = metaSize,
                         color = Color.Gray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -128,14 +133,14 @@ fun ProductoItem(
                 }
                 Text(
                     text = "%.0f€".format(producto.precio),
-                    fontSize = 13.sp,
+                    fontSize = priceSize,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
                 if (isEnCarrito) {
                     Text(
                         text = "En carrito",
-                        fontSize = 10.sp,
+                        fontSize = metaSize,
                         color = Purple,
                         fontWeight = FontWeight.SemiBold
                     )
