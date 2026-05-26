@@ -196,6 +196,7 @@ data class NavItem(val tab: Tab, val icon: ImageVector, val label: String)
 
 @Composable
 fun FkaehBottomBar(current: Tab, carritoCount: Int, esAdmin: Boolean, onChange: (Tab) -> Unit) {
+    val adaptive = rememberAdaptiveLayout()
     val items = buildList {
         add(NavItem(Tab.SELL, Icons.Outlined.AddCircle, "Vender"))
         add(NavItem(Tab.CHAT, Icons.Outlined.ChatBubbleOutline, "Chat"))
@@ -204,10 +205,12 @@ fun FkaehBottomBar(current: Tab, carritoCount: Int, esAdmin: Boolean, onChange: 
         if (esAdmin) add(NavItem(Tab.ADMIN, Icons.Outlined.AdminPanelSettings, "Admin"))
         add(NavItem(Tab.PROFILE, Icons.Outlined.Person, "Perfil"))
     }
+    val iconSize = if (items.size > 5 && adaptive.isCompactWidth) 18.dp else adaptive.bottomBarIconSize
+    val badgeSize = if (adaptive.isCompactWidth) 12.dp else 14.dp
 
     NavigationBar(
         containerColor = Color(0xFF0D0D0D),
-        modifier = Modifier.height(62.dp),
+        modifier = Modifier.height(adaptive.bottomBarHeight),
         tonalElevation = 0.dp
     ) {
         items.forEach { item ->
@@ -219,22 +222,25 @@ fun FkaehBottomBar(current: Tab, carritoCount: Int, esAdmin: Boolean, onChange: 
                         androidx.compose.material3.Icon(
                             item.icon,
                             contentDescription = item.label,
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(iconSize),
                             tint = if (current == item.tab) Color.White else customPurple
                         )
                         if (item.tab == Tab.CART && carritoCount > 0) {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
-                                    .offset(x = 5.dp, y = (-3).dp)
-                                    .size(14.dp)
-                                    .clip(RoundedCornerShape(7.dp))
+                                    .offset(
+                                        x = if (adaptive.isCompactWidth) 4.dp else 5.dp,
+                                        y = if (adaptive.isCompactWidth) (-2).dp else (-3).dp
+                                    )
+                                    .size(badgeSize)
+                                    .clip(RoundedCornerShape(badgeSize / 2))
                                     .background(customPurple),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     carritoCount.toString(),
-                                    fontSize = 8.sp,
+                                    fontSize = if (adaptive.isCompactWidth) 7.sp else 8.sp,
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold
                                 )
