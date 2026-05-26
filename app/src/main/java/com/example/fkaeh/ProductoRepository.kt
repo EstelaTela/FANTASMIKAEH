@@ -121,17 +121,25 @@ class ProductoRepository(private val context: Context) {
             val endpointConVendedor = "/rest/v1/productos" +
                 "?select=*,usuarios(nombre),fotos_producto(url_foto,es_principal)" +
                 "&order=fecha_publicacion.desc"
+            val endpointConVendedorAlt = "/rest/v1/productos" +
+                "?select=*,Usuarios(nombre),fotos_producto(url_foto,es_principal)" +
+                "&order=fecha_publicacion.desc"
             val endpointSimple = "/rest/v1/productos" +
                 "?select=*,fotos_producto(url_foto,es_principal)" +
                 "&order=fecha_publicacion.desc"
 
-            val array = try {
-                ApiClient.getArray(context, endpointConVendedor)
-            } catch (_: Exception) {
-                ApiClient.getArray(context, endpointSimple)
+            val array = runCatching { ApiClient.getArray(context, endpointConVendedor) }
+                .recoverCatching { ApiClient.getArray(context, endpointConVendedorAlt) }
+                .recoverCatching { ApiClient.getArray(context, endpointSimple) }
+                .getOrThrow()
+
+            val userNamesById = if (containsMissingSellerNames(array)) {
+                fetchUserNamesById()
+            } else {
+                emptyMap()
             }
 
-            Result.success(parseProductos(array))
+            Result.success(parseProductos(array, userNamesById))
         } catch (e: Exception) {
             android.util.Log.e("SUPABASE", "Error cargando productos: ${e.message}", e)
             Result.failure(Exception("No se pudo conectar al servidor"))
@@ -200,6 +208,53 @@ class ProductoRepository(private val context: Context) {
         } catch (_: Exception) {
             Result.success(emptySet())
         }
+    }
+
+    suspend fun uploadProfilePhoto(userId: Int, photoUri: Uri): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val photoBytes = context.contentResolver.openInputStream(photoUri)?.readBytes()
+                    ?: return@withContext Result.failure(Exception("No se pudo leer la foto"))
+
+                val mimeType = context.contentResolver.getType(photoUri)?.takeIf { it.isNotBlank() } ?: "image/jpeg"
+                val objectPath = profilePhotoObjectPath(userId)
+                val bucketUrl = "${ApiClient.getBaseUrl(context)}/storage/v1/object/fotos-productos/$objectPath"
+
+                val conn = (URL(bucketUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    doOutput = true
+                    connectTimeout = 30_000
+                    readTimeout = 30_000
+                    setRequestProperty("apikey", ApiClient.SUPABASE_ANON_KEY)
+                    setRequestProperty("Authorization", "Bearer ${ApiClient.SUPABASE_ANON_KEY}")
+                    setRequestProperty("Content-Type", mimeType)
+                    setRequestProperty("x-upsert", "true")
+                }
+
+                conn.outputStream.use { it.write(photoBytes) }
+                val code = conn.responseCode
+                val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    .orEmpty()
+                conn.disconnect()
+
+                if (code in 200..299) {
+                    Result.success(cacheBustedProfilePhotoUrl(userId))
+                } else {
+                    Result.failure(Exception("Error al subir foto de perfil: $code ${text.take(180)}".trim()))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun resolveProfilePhotoUrl(userId: Int): String? = withContext(Dispatchers.IO) {
+        val publicUrl = profilePhotoPublicUrl(userId)
+        runCatching {
+            if (remoteFileExists(publicUrl)) cacheBustedProfilePhotoUrl(userId) else null
+        }.getOrNull()
     }
 
     suspend fun agregarFavorito(idUsuario: Int, idProducto: Int): Result<Unit> {
@@ -415,6 +470,105 @@ class ProductoRepository(private val context: Context) {
         }
     }
 
+    suspend fun getOfferThreads(idUsuario: Int): Result<List<OfferThread>> {
+        return try {
+            val endpoint = "/rest/v1/oferta_conversaciones" +
+                "?or=(id_comprador.eq.$idUsuario,id_vendedor.eq.$idUsuario)" +
+                "&select=*,oferta_mensajes(*)" +
+                "&order=created_at.desc"
+            val array = ApiClient.getArray(context, endpoint)
+            val threads = buildList {
+                for (i in 0 until array.length()) {
+                    add(parseOfferThread(array.getJSONObject(i)))
+                }
+            }
+            Result.success(threads.sortedByDescending { it.latestOffer()?.createdAt ?: 0L })
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudieron cargar las ofertas"))
+        }
+    }
+
+    suspend fun ensureOfferThread(producto: Producto, comprador: UsuarioBD): Result<String> {
+        return try {
+            val lookup = "/rest/v1/oferta_conversaciones" +
+                "?id_producto=eq.${producto.id}" +
+                "&id_comprador=eq.${comprador.id_usuario}" +
+                "&id_vendedor=eq.${producto.idVendedor}" +
+                "&select=id_conversacion" +
+                "&limit=1"
+            val existing = ApiClient.getArray(context, lookup)
+            if (existing.length() > 0) {
+                return Result.success(existing.getJSONObject(0).getLong("id_conversacion").toString())
+            }
+
+            val body = JSONObject().apply {
+                put("id_producto", producto.id)
+                put("nombre_producto", producto.nombre)
+                put("precio_base", producto.precio)
+                put("foto_url", producto.fotoUrl)
+                put("id_comprador", comprador.id_usuario)
+                put("nombre_comprador", comprador.nombre)
+                put("id_vendedor", producto.idVendedor)
+                put("nombre_vendedor", producto.nombreVendedor)
+                put("created_at", System.currentTimeMillis())
+                put("updated_at", System.currentTimeMillis())
+            }
+            val created = ApiClient.postArray(context, "/rest/v1/oferta_conversaciones", body)
+            val first = created.optJSONObject(0)
+            if (first == null || first.has("code") || first.has("message")) {
+                val refetched = ApiClient.getArray(context, lookup)
+                if (refetched.length() > 0) {
+                    Result.success(refetched.getJSONObject(0).getLong("id_conversacion").toString())
+                } else {
+                    Result.failure(Exception(first?.optString("message", "No se pudo crear la conversación") ?: "No se pudo crear la conversación"))
+                }
+            } else {
+                Result.success(first.getLong("id_conversacion").toString())
+            }
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo preparar la conversación"))
+        }
+    }
+
+    suspend fun createOffer(threadId: String, buyerId: Int, amount: Double): Result<Unit> {
+        return try {
+            val body = JSONObject().apply {
+                put("id_conversacion", threadId.toLong())
+                put("id_comprador", buyerId)
+                put("importe", amount)
+                put("estado", OfferStatus.PENDING.name)
+                put("created_at", System.currentTimeMillis())
+            }
+            val created = ApiClient.postArray(context, "/rest/v1/oferta_mensajes", body)
+            val first = created.optJSONObject(0)
+            if (first != null && (first.has("code") || first.has("message"))) {
+                Result.failure(Exception(first.optString("message", "No se pudo enviar la oferta")))
+            } else {
+                val patch = JSONObject().apply { put("updated_at", System.currentTimeMillis()) }
+                ApiClient.patch(context, "/rest/v1/oferta_conversaciones?id_conversacion=eq.$threadId", patch)
+                Result.success(Unit)
+            }
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo enviar la oferta"))
+        }
+    }
+
+    suspend fun updateOfferStatus(offerId: String, threadId: String, status: OfferStatus): Result<Unit> {
+        return try {
+            val body = JSONObject().apply { put("estado", status.name) }
+            val code = ApiClient.patch(context, "/rest/v1/oferta_mensajes?id_oferta=eq.$offerId", body)
+            if (code in 200..299) {
+                val patch = JSONObject().apply { put("updated_at", System.currentTimeMillis()) }
+                ApiClient.patch(context, "/rest/v1/oferta_conversaciones?id_conversacion=eq.$threadId", patch)
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("No se pudo actualizar la oferta"))
+            }
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo actualizar la oferta"))
+        }
+    }
+
     private suspend fun getIds(endpoint: String, field: String): List<Int> {
         return try {
             val array = ApiClient.getArray(context, endpoint)
@@ -438,6 +592,70 @@ class ProductoRepository(private val context: Context) {
             urls.add(result.getOrThrow())
         }
         return Result.success(urls)
+    }
+
+    private fun profilePhotoObjectPath(userId: Int): String = "profiles/profile_$userId"
+
+    private fun profilePhotoPublicUrl(userId: Int): String =
+        "${ApiClient.getBaseUrl(context)}/storage/v1/object/public/fotos-productos/${profilePhotoObjectPath(userId)}"
+
+    private fun cacheBustedProfilePhotoUrl(userId: Int): String =
+        "${profilePhotoPublicUrl(userId)}?t=${System.currentTimeMillis()}"
+
+    private fun remoteFileExists(url: String): Boolean {
+        val methods = listOf("HEAD", "GET")
+        methods.forEach { method ->
+            runCatching {
+                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = method
+                    connectTimeout = 10_000
+                    readTimeout = 10_000
+                }
+                val code = conn.responseCode
+                if (method == "GET") {
+                    runCatching { conn.inputStream?.close() }
+                    runCatching { conn.errorStream?.close() }
+                }
+                conn.disconnect()
+                code in 200..299
+            }.getOrNull()?.let { if (it) return true }
+        }
+        return false
+    }
+
+    private fun parseOfferThread(json: JSONObject): OfferThread {
+        val offersJson = json.optJSONArray("oferta_mensajes")
+        val offers = buildList {
+            if (offersJson != null) {
+                for (i in 0 until offersJson.length()) {
+                    val item = offersJson.getJSONObject(i)
+                    add(
+                        OfferEntry(
+                            id = item.optLong("id_oferta").toString(),
+                            amount = item.optDouble("importe"),
+                            buyerId = item.optInt("id_comprador"),
+                            createdAt = item.optLong("created_at"),
+                            status = runCatching {
+                                OfferStatus.valueOf(item.optString("estado", OfferStatus.PENDING.name))
+                            }.getOrDefault(OfferStatus.PENDING)
+                        )
+                    )
+                }
+            }
+        }.sortedBy { it.createdAt }
+
+        return OfferThread(
+            threadId = json.optLong("id_conversacion").toString(),
+            productId = json.optInt("id_producto"),
+            productName = json.optString("nombre_producto"),
+            productBasePrice = json.optDouble("precio_base"),
+            productPhotoUrl = json.optString("foto_url").takeIf { it.isNotBlank() },
+            sellerId = json.optInt("id_vendedor"),
+            sellerName = json.optString("nombre_vendedor"),
+            buyerId = json.optInt("id_comprador"),
+            buyerName = json.optString("nombre_comprador"),
+            offers = offers
+        )
     }
 
     private suspend fun subirFoto(idProducto: Int, fotoUri: Uri, esPrincipal: Boolean): Result<String> {
@@ -532,18 +750,54 @@ class ProductoRepository(private val context: Context) {
         return fotos.optJSONObject(0)?.optString("url_foto")?.takeIf { it.isNotBlank() }
     }
 
-    private fun parseProductos(array: JSONArray): List<ProductoBD> {
+    private fun containsMissingSellerNames(array: JSONArray): Boolean {
+        for (i in 0 until array.length()) {
+            val producto = array.getJSONObject(i)
+            val vendedor = producto.optJSONObject("usuarios") ?: producto.optJSONObject("Usuarios")
+            val nombre = vendedor?.optString("nombre").orEmpty().trim()
+            if (nombre.isBlank()) return true
+        }
+        return false
+    }
+
+    private suspend fun fetchUserNamesById(): Map<Int, String> {
+        val endpoints = listOf(
+            "/rest/v1/usuarios?select=id_usuario,nombre",
+            "/rest/v1/Usuarios?select=id_usuario,nombre"
+        )
+
+        for (endpoint in endpoints) {
+            runCatching {
+                val array = ApiClient.getArray(context, endpoint)
+                buildMap {
+                    for (i in 0 until array.length()) {
+                        val usuario = array.getJSONObject(i)
+                        val id = usuario.optInt("id_usuario", -1)
+                        val nombre = usuario.optString("nombre").trim()
+                        if (id > 0 && nombre.isNotBlank()) put(id, nombre)
+                    }
+                }
+            }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+        }
+
+        return emptyMap()
+    }
+
+    private fun parseProductos(array: JSONArray, userNamesById: Map<Int, String> = emptyMap()): List<ProductoBD> {
         val lista = mutableListOf<ProductoBD>()
         for (i in 0 until array.length()) {
             val p = array.getJSONObject(i)
             val fotosJson = p.optJSONArray("fotos_producto")
             val fotos = extraerFotos(fotosJson)
-            val vendedor = p.optJSONObject("usuarios")
+            val vendedor = p.optJSONObject("usuarios") ?: p.optJSONObject("Usuarios")
+            val idVendedor = p.getInt("id_vendedor")
+            val nombreVendedor = vendedor?.optString("nombre").orEmpty().trim()
+                .ifBlank { userNamesById[idVendedor].orEmpty() }
 
             lista.add(
                 ProductoBD(
                     idProducto = p.getInt("id_producto"),
-                    idVendedor = p.getInt("id_vendedor"),
+                    idVendedor = idVendedor,
                     idCategoria = if (p.isNull("id_categoria")) null else p.getInt("id_categoria"),
                     nombre = p.getString("nombre"),
                     descripcion = p.optString("descripcion", ""),
@@ -552,7 +806,7 @@ class ProductoRepository(private val context: Context) {
                     fechaPublicacion = p.optString("fecha_publicacion", ""),
                     fotoPrincipal = encontrarFotoPrincipal(fotosJson),
                     fotos = fotos,
-                    nombreVendedor = vendedor?.optString("nombre").orEmpty()
+                    nombreVendedor = nombreVendedor
                 )
             )
         }

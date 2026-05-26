@@ -310,9 +310,10 @@ private fun ProfileAvatar(name: String, photoPath: String?, onClick: () -> Unit)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        if (photoPath != null) {
+        val imageModel = remember(photoPath) { profilePhotoModel(photoPath) }
+        if (imageModel != null) {
             AsyncImage(
-                model = File(photoPath),
+                model = imageModel,
                 contentDescription = "Foto de perfil",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -434,9 +435,10 @@ private fun MisDatosContent(vm: AppViewModel, user: UsuarioBD?) {
                 .background(Color(0xFF1F1F1F)),
             contentAlignment = Alignment.Center
         ) {
-            if (vm.profilePhotoPath != null) {
+            val imageModel = remember(vm.profilePhotoPath) { profilePhotoModel(vm.profilePhotoPath) }
+            if (imageModel != null) {
                 AsyncImage(
-                    model = File(vm.profilePhotoPath!!),
+                    model = imageModel,
                     contentDescription = "Foto de perfil",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -450,6 +452,11 @@ private fun MisDatosContent(vm: AppViewModel, user: UsuarioBD?) {
         DatoCentrado("Correo", user.correo)
         DatoCentrado("Teléfono", user.telefono.ifBlank { "No indicado" })
     }
+}
+
+private fun profilePhotoModel(photoPath: String?): Any? {
+    if (photoPath.isNullOrBlank()) return null
+    return if (photoPath.startsWith("http")) photoPath else File(photoPath)
 }
 
 @Composable
@@ -938,6 +945,13 @@ private fun CompraHistorialItem(item: ItemCarrito) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (item.producto.nombreVendedor.isNotBlank()) {
+                Text(
+                    text = "de ${item.producto.nombreVendedor}",
+                    color = ProfileMuted,
+                    fontSize = 11.sp
+                )
+            }
             Text(text = "Comprado", color = ProfileMuted, fontSize = 11.sp)
         }
 

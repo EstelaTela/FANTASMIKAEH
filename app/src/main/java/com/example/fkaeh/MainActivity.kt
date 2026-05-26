@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddCircle
 import androidx.compose.material.icons.outlined.AdminPanelSettings
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
@@ -59,7 +60,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen { LOGIN, REGISTER, MAIN }
-enum class Tab { SELL, HOME, SEARCH, CART, PROFILE, ADMIN }
+enum class Tab { SELL, CHAT, HOME, SEARCH, CART, PROFILE, ADMIN }
 
 @Composable
 fun App() {
@@ -144,11 +145,24 @@ fun App() {
                             productoSeleccionadoId = null
                             currentTab = Tab.CART
                         },
+                        onGoToChat = {
+                            productoSeleccionadoId = null
+                            currentTab = Tab.CHAT
+                        },
                         onBack = { productoSeleccionadoId = null }
                     )
                 } else {
                     when (currentTab) {
-                        Tab.HOME -> HomeScreen(vm = vm, onProductoClick = { productoSeleccionadoId = it.id })
+                        Tab.HOME -> HomeScreen(
+                            vm = vm,
+                            onProductoClick = { productoSeleccionadoId = it.id },
+                            onOpenSearch = { currentTab = Tab.SEARCH }
+                        )
+                        Tab.CHAT -> ChatScreen(
+                            vm = vm,
+                            onExploreHome = { currentTab = Tab.HOME },
+                            onGoToCart = { currentTab = Tab.CART }
+                        )
                         Tab.SEARCH -> SearchScreen(
                             vm = vm,
                             onProductoClick = { productoSeleccionadoId = it.id },
@@ -184,8 +198,8 @@ data class NavItem(val tab: Tab, val icon: ImageVector, val label: String)
 fun FkaehBottomBar(current: Tab, carritoCount: Int, esAdmin: Boolean, onChange: (Tab) -> Unit) {
     val items = buildList {
         add(NavItem(Tab.SELL, Icons.Outlined.AddCircle, "Vender"))
+        add(NavItem(Tab.CHAT, Icons.Outlined.ChatBubbleOutline, "Chat"))
         add(NavItem(Tab.HOME, Icons.Outlined.Home, "Inicio"))
-        add(NavItem(Tab.SEARCH, Icons.Outlined.Search, "Buscar"))
         add(NavItem(Tab.CART, Icons.Outlined.ShoppingCart, "Carrito"))
         if (esAdmin) add(NavItem(Tab.ADMIN, Icons.Outlined.AdminPanelSettings, "Admin"))
         add(NavItem(Tab.PROFILE, Icons.Outlined.Person, "Perfil"))
@@ -205,7 +219,8 @@ fun FkaehBottomBar(current: Tab, carritoCount: Int, esAdmin: Boolean, onChange: 
                         androidx.compose.material3.Icon(
                             item.icon,
                             contentDescription = item.label,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(24.dp),
+                            tint = if (current == item.tab) Color.White else customPurple
                         )
                         if (item.tab == Tab.CART && carritoCount > 0) {
                             Box(

@@ -3,8 +3,8 @@ package com.example.fkaeh
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,19 +19,26 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,20 +57,30 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.fkaeh.ui.theme.customPurple
+import kotlinx.coroutines.launch
 
 @Composable
 fun ProductoDetalleScreen(
     producto: Producto,
     vm: AppViewModel,
     onGoToCart: () -> Unit,
+    onGoToChat: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val pagerScope = rememberCoroutineScope()
     val fotos = remember(producto.fotoUrls, producto.fotoUrl) {
         if (producto.fotoUrls.isNotEmpty()) producto.fotoUrls else listOfNotNull(producto.fotoUrl)
     }
-    var fotoSeleccionada by remember(producto.id) { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(
+        initialPage = 0,
+        pageCount = { fotos.size.coerceAtLeast(1) }
+    )
+    LaunchedEffect(producto.id) {
+        pagerState.scrollToPage(0)
+    }
+    val fotoSeleccionada = pagerState.currentPage.coerceIn(0, (fotos.size - 1).coerceAtLeast(0))
     val indiceSeguro = fotoSeleccionada.coerceIn(0, (fotos.size - 1).coerceAtLeast(0))
     val fotoUrlCompleta = fotos.getOrNull(indiceSeguro)?.let {
         if (it.startsWith("http")) it else ApiClient.getBaseUrl(context) + it
@@ -72,6 +89,7 @@ fun ProductoDetalleScreen(
     val enCarrito = vm.carrito.any { it.producto.id == producto.id }
     val esPropio = vm.currentUser?.id_usuario == producto.idVendedor
     val scroll = rememberScrollState()
+    var offerText by remember(producto.id) { mutableStateOf("") }
 
     Box(
         modifier = Modifier
@@ -80,17 +98,27 @@ fun ProductoDetalleScreen(
     ) {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(scroll)) {
             Box(modifier = Modifier.fillMaxWidth().height(480.dp)) {
-                if (fotoUrlCompleta != null) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(fotoUrlCompleta)
-                            .crossfade(true)
-                            .addHeader("ngrok-skip-browser-warning", "true")
-                            .build(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                if (fotos.isNotEmpty()) {
+                    HorizontalPager(
+                        state = pagerState,
                         modifier = Modifier.fillMaxSize()
-                    )
+                    ) { page ->
+                        val fotoPagina = fotos.getOrNull(page)?.let {
+                            if (it.startsWith("http")) it else ApiClient.getBaseUrl(context) + it
+                        }
+                        if (fotoPagina != null) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(fotoPagina)
+                                    .crossfade(true)
+                                    .addHeader("ngrok-skip-browser-warning", "true")
+                                    .build(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                 } else {
                     Box(
                         modifier = Modifier
@@ -104,6 +132,27 @@ fun ProductoDetalleScreen(
                             fontWeight = FontWeight.Black,
                             color = Purple.copy(alpha = 0.3f)
                         )
+                    }
+                }
+
+                if (fotos.size > 1) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 18.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        fotos.forEachIndexed { index, _ ->
+                            Box(
+                                modifier = Modifier
+                                    .size(if (index == fotoSeleccionada) 22.dp else 8.dp, 8.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(
+                                        if (index == fotoSeleccionada) Color.White
+                                        else Color.White.copy(alpha = 0.38f)
+                                    )
+                            )
+                        }
                     }
                 }
 
@@ -128,7 +177,7 @@ fun ProductoDetalleScreen(
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.5f))
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
                 }
             }
 
@@ -149,7 +198,9 @@ fun ProductoDetalleScreen(
                                     .size(64.dp)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color(0xFF151515))
-                                    .clickable { fotoSeleccionada = index },
+                                    .clickable {
+                                        pagerScope.launch { pagerState.animateScrollToPage(index) }
+                                    },
                                 contentScale = ContentScale.Crop
                             )
                         }
@@ -198,7 +249,12 @@ fun ProductoDetalleScreen(
 
                 Button(
                     onClick = {
-                        if (enCarrito) onGoToCart() else vm.comprar(producto)
+                        if (enCarrito) {
+                            onGoToCart()
+                        } else {
+                            vm.iniciarCompraDirecta(producto)
+                            onGoToCart()
+                        }
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -236,6 +292,65 @@ fun ProductoDetalleScreen(
                 }
 
                 Spacer(Modifier.height(16.dp))
+
+                if (!esPropio) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = offerText,
+                            onValueChange = { offerText = it },
+                            modifier = Modifier.weight(1f),
+                            label = { Text("Hacer Oferta") },
+                            placeholder = { Text("Ej. 95€") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(24.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color(0xFF141414),
+                                unfocusedContainerColor = Color(0xFF141414),
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedLabelColor = customPurple,
+                                unfocusedLabelColor = Color(0xFFB9B9B9),
+                                focusedPlaceholderColor = Color(0xFF7E7E7E),
+                                unfocusedPlaceholderColor = Color(0xFF7E7E7E),
+                                cursorColor = customPurple
+                            )
+                        )
+
+                        Spacer(Modifier.size(8.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(customPurple),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    vm.prepareOfferChat(producto, offerText) { success ->
+                                        if (success) {
+                                            offerText = ""
+                                            onGoToChat()
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Enviar oferta",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                }
 
                 if (producto.categoriaNombre.isNotBlank() || producto.estadoPrenda.isNotBlank()) {
                     Row(

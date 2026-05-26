@@ -1,21 +1,30 @@
 package com.example.fkaeh
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,7 +41,11 @@ val Purple = Color(0xFF8C52FF)
 val BlackBg = Color(0xFF0A0A0A)
 
 @Composable
-fun HomeScreen(vm: AppViewModel, onProductoClick: (Producto) -> Unit = {}) {
+fun HomeScreen(
+    vm: AppViewModel,
+    onProductoClick: (Producto) -> Unit = {},
+    onOpenSearch: () -> Unit = {}
+) {
 
     LaunchedEffect(Unit) {
         vm.cargarProductosDesdeBD()
@@ -47,8 +60,44 @@ fun HomeScreen(vm: AppViewModel, onProductoClick: (Producto) -> Unit = {}) {
             contentScale = ContentScale.FillBounds
         )
 
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 20.dp)
+                .align(Alignment.TopCenter)
+        ) {
+            Column(modifier = Modifier.align(Alignment.TopStart)) {
+                Text(
+                    text = "",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    text = "",
+                    color = Color.White.copy(alpha = 0.82f),
+                    fontSize = 14.sp
+                )
+            }
+
+            IconButton(
+                onClick = onOpenSearch,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(54.dp)
+                    .background(Color.White, CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = "Buscar",
+                    tint = Color.Black,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
         Column(modifier = Modifier.fillMaxSize()) {
-            Spacer(Modifier.height(210.dp))
+            Spacer(Modifier.height(160.dp))
 
             if (vm.esAdmin) {
                 Text(

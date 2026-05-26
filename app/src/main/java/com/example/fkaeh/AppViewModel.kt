@@ -6,6 +6,7 @@ import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -37,6 +38,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _usuariosAdmin = mutableStateListOf<UsuarioBD>()
     val usuariosAdmin: List<UsuarioBD> = _usuariosAdmin
 
+    private val _offerThreads = mutableStateListOf<OfferThread>()
+    val offerThreads: List<OfferThread> = _offerThreads
+
+    private val _offerDrafts = mutableStateMapOf<String, String>()
+
     var currentLanguage by mutableStateOf(AppLanguage.fromCode(prefs.getString("language", AppLanguage.ES.code)))
         private set
     var notificationsEnabled by mutableStateOf(NotificationHelper.isEnabled(application))
@@ -63,6 +69,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var venderExitoso by mutableStateOf(false)
         private set
     var venderError by mutableStateOf<String?>(null)
+        private set
+    var activeOfferThreadId by mutableStateOf<String?>(null)
+        private set
+    var checkoutRequestId by mutableStateOf(0L)
+        private set
+    var checkoutTarget by mutableStateOf(CheckoutTarget.CART)
         private set
 
     private val productoRepository = ProductoRepository(application.applicationContext)
@@ -94,15 +106,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             uiMessage = "No puedes comprar tu propio producto"
             return
         }
-        if (_carrito.none { it.producto.id == producto.id }) {
-            _carrito.add(ItemCarrito(producto))
-            uiMessage = "Producto añadido al carrito"
-            NotificationHelper.show(
-                getApplication(),
-                "Carrito actualizado",
-                "${producto.nombre} se ha añadido al carrito"
-            )
-        }
+        val inserted = putProductInCart(producto)
+        uiMessage = if (inserted) "Producto añadido al carrito" else "Carrito actualizado"
+        NotificationHelper.show(
+            getApplication(),
+            "Carrito actualizado",
+            "${producto.nombre} se ha añadido al carrito"
+        )
     }
 
     fun eliminarDelCarrito(item: ItemCarrito) {
@@ -115,9 +125,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun totalCarrito(): Double = _carrito.sumOf { it.producto.precio }
 
-    fun finalizarCompraDemo(direccion: DireccionGuardada) {
+    fun iniciarCompraDirecta(producto: Producto, priceOverride: Double? = null, forceAddressStep: Boolean = false) {
+        val userId = currentUser?.id_usuario
+        if (userId != null && producto.idVendedor == userId) {
+            uiMessage = "No puedes comprar tu propio producto"
+            return
+        }
+        val finalProduct = producto.copy(precio = priceOverride ?: producto.precio)
+        putProductInCart(finalProduct)
+        checkoutTarget = if (forceAddressStep) {
+            CheckoutTarget.ADDRESS
+        } else if (_direccionesGuardadas.isNotEmpty()) {
+            CheckoutTarget.PAYMENT
+        } else {
+            CheckoutTarget.ADDRESS
+        }
+        checkoutRequestId = System.currentTimeMillis()
+    }
+
+    fun finalizarCompraDemo(_direccion: DireccionGuardada) {
         if (_carrito.isEmpty()) return
-        uiMessage = "Redirigiendo al pago de prueba para ${direccion.alias}"
         confirmarCompra()
     }
 
@@ -166,6 +193,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     cargarDirecciones()
                     cargarProductosDesdeBD()
                     cargarFavoritos()
+                    cargarOfferThreads()
                 }
                 .onFailure {
                     loginError = if (it.message?.contains("Credenciales") == true) {
@@ -210,6 +238,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     cargarDirecciones()
                     cargarProductosDesdeBD()
                     cargarFavoritos()
+                    cargarOfferThreads()
                 }
                 .onFailure {
                     registroError = if (it.message?.contains("registrado") == true) {
@@ -237,33 +266,222 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _favoritos.clear()
         _direccionesGuardadas.clear()
         _usuariosAdmin.clear()
+        _offerThreads.clear()
+        _offerDrafts.clear()
+        activeOfferThreadId = null
         profilePhotoPath = null
         uiMessage = null
     }
 
+    fun cargarOfferThreads(showErrors: Boolean = true) {
+        val userId = currentUser?.id_usuario ?: return
+        viewModelScope.launch {
+            productoRepository.getOfferThreads(userId)
+                .onSuccess {
+                    _offerThreads.clear()
+                    _offerThreads.addAll(it)
+                }
+                .onFailure {
+                    if (showErrors) {
+                        uiMessage = it.message ?: "No se pudieron cargar las ofertas"
+                    }
+                }
+        }
+    }
+
+    fun offerThreadsForCurrentUser(): List<OfferThread> {
+        val userId = currentUser?.id_usuario ?: return emptyList()
+        return _offerThreads
+            .filter { it.offers.isNotEmpty() && (it.buyerId == userId || it.sellerId == userId) }
+            .sortedByDescending { it.latestOffer()?.createdAt ?: 0L }
+    }
+
+    fun offerDraftFor(threadId: String): String = _offerDrafts[threadId].orEmpty()
+
+    fun updateOfferDraft(threadId: String, text: String) {
+        _offerDrafts[threadId] = text
+    }
+
+    fun openOfferThread(threadId: String) {
+        val userId = currentUser?.id_usuario ?: return
+        val allowed = _offerThreads.any {
+            it.offers.isNotEmpty() && it.threadId == threadId && (it.buyerId == userId || it.sellerId == userId)
+        }
+        if (allowed) activeOfferThreadId = threadId
+    }
+
+    fun closeOfferThread() {
+        activeOfferThreadId = null
+    }
+
+    fun activeOfferThread(): OfferThread? {
+        val threadId = activeOfferThreadId ?: return null
+        val userId = currentUser?.id_usuario ?: return null
+        return _offerThreads.firstOrNull {
+            it.offers.isNotEmpty() && it.threadId == threadId && (it.buyerId == userId || it.sellerId == userId)
+        }
+    }
+
+    fun prepareOfferChat(producto: Producto, offerText: String, onReady: (Boolean) -> Unit) {
+        if (currentUser == null) {
+            uiMessage = "Inicia sesión para hacer ofertas"
+            onReady(false)
+            return
+        }
+        if (currentUser?.id_usuario == producto.idVendedor) {
+            uiMessage = "No puedes hacer una oferta sobre tu propio producto"
+            onReady(false)
+            return
+        }
+        if (producto.nombreVendedor.isBlank()) {
+            uiMessage = "No se ha podido identificar al vendedor de este producto"
+            onReady(false)
+            return
+        }
+        val amount = parseOfferAmount(offerText) ?: run {
+            onReady(false)
+            return
+        }
+
+        val buyer = currentUser ?: run {
+            onReady(false)
+            return
+        }
+
+        viewModelScope.launch {
+            productoRepository.ensureOfferThread(producto, buyer)
+                .onSuccess { threadId ->
+                    val existing = _offerThreads.firstOrNull { it.threadId == threadId }
+                    val latest = existing?.latestOffer()
+                    if (latest?.status == OfferStatus.PENDING) {
+                        uiMessage = "Ya tienes una oferta pendiente en este producto"
+                        activeOfferThreadId = threadId
+                        onReady(false)
+                        return@launch
+                    }
+                    if (latest?.status == OfferStatus.ACCEPTED) {
+                        uiMessage = "La última oferta ya fue aceptada. Continúa al pago."
+                        activeOfferThreadId = threadId
+                        onReady(false)
+                        return@launch
+                    }
+
+                    productoRepository.createOffer(threadId, buyer.id_usuario, amount)
+                        .onSuccess {
+                            _offerDrafts[threadId] = ""
+                            activeOfferThreadId = threadId
+                            cargarOfferThreads()
+                            uiMessage = "Oferta enviada al chat"
+                            onReady(true)
+                        }
+                        .onFailure {
+                            uiMessage = it.message ?: "No se pudo enviar la oferta"
+                            onReady(false)
+                        }
+                }
+                .onFailure {
+                    uiMessage = it.message ?: "No se pudo preparar la conversación"
+                    onReady(false)
+                }
+        }
+    }
+
+    fun sendOfferInChat(threadId: String, rawText: String) {
+        val userId = currentUser?.id_usuario ?: return
+        val thread = _offerThreads.firstOrNull { it.threadId == threadId && it.buyerId == userId } ?: return
+        val latest = thread.latestOffer()
+        if (latest?.status == OfferStatus.PENDING) {
+            uiMessage = "Espera a que el vendedor responda antes de enviar otra oferta"
+            return
+        }
+        if (latest?.status == OfferStatus.ACCEPTED) {
+            uiMessage = "La oferta ya fue aceptada. Ve a la pasarela."
+            return
+        }
+        val amount = parseOfferAmount(rawText) ?: return
+        viewModelScope.launch {
+            productoRepository.createOffer(thread.threadId, userId, amount)
+                .onSuccess {
+                    _offerDrafts[thread.threadId] = ""
+                    cargarOfferThreads()
+                    uiMessage = "Nueva oferta enviada"
+                }
+                .onFailure {
+                    uiMessage = it.message ?: "No se pudo enviar la oferta"
+                }
+        }
+    }
+
+    fun acceptLatestOffer(threadId: String) {
+        val userId = currentUser?.id_usuario ?: return
+        val thread = _offerThreads.firstOrNull { it.threadId == threadId && it.sellerId == userId } ?: return
+        val lastPendingIndex = thread.offers.indexOfLast { it.status == OfferStatus.PENDING }
+        if (lastPendingIndex == -1) {
+            uiMessage = "No hay ninguna oferta pendiente"
+            return
+        }
+        val offerId = thread.offers[lastPendingIndex].id
+        viewModelScope.launch {
+            productoRepository.updateOfferStatus(offerId, thread.threadId, OfferStatus.ACCEPTED)
+                .onSuccess {
+                    cargarOfferThreads()
+                    uiMessage = "Oferta aceptada"
+                }
+                .onFailure {
+                    uiMessage = it.message ?: "No se pudo aceptar la oferta"
+                }
+        }
+    }
+
+    fun rejectLatestOffer(threadId: String) {
+        val userId = currentUser?.id_usuario ?: return
+        val thread = _offerThreads.firstOrNull { it.threadId == threadId && it.sellerId == userId } ?: return
+        val lastPendingIndex = thread.offers.indexOfLast { it.status == OfferStatus.PENDING }
+        if (lastPendingIndex == -1) {
+            uiMessage = "No hay ninguna oferta pendiente"
+            return
+        }
+        val offerId = thread.offers[lastPendingIndex].id
+        viewModelScope.launch {
+            productoRepository.updateOfferStatus(offerId, thread.threadId, OfferStatus.REJECTED)
+                .onSuccess {
+                    cargarOfferThreads()
+                    uiMessage = "Oferta rechazada"
+                }
+                .onFailure {
+                    uiMessage = it.message ?: "No se pudo rechazar la oferta"
+                }
+        }
+    }
+
+    fun startCheckoutFromAcceptedOffer(threadId: String): Boolean {
+        val userId = currentUser?.id_usuario ?: return false
+        val thread = _offerThreads.firstOrNull { it.threadId == threadId && it.buyerId == userId } ?: return false
+        val latest = thread.latestOffer()
+        if (latest?.status != OfferStatus.ACCEPTED) {
+            uiMessage = "La oferta aún no ha sido aceptada"
+            return false
+        }
+        iniciarCompraDirecta(
+            thread.toProducto(priceOverride = latest.amount),
+            priceOverride = latest.amount,
+            forceAddressStep = true
+        )
+        return true
+    }
+
     fun updateProfilePhoto(uri: Uri) {
         val userId = currentUser?.id_usuario ?: return
-        val context = getApplication<Application>().applicationContext
-        runCatching {
-            val mimeType = context.contentResolver.getType(uri).orEmpty()
-            val extension = MimeTypeMap.getSingleton()
-                .getExtensionFromMimeType(mimeType)
-                ?.takeIf { it.isNotBlank() }
-                ?: "jpg"
-            context.filesDir.listFiles()
-                ?.filter { it.name.startsWith("profile_photo_$userId.") }
-                ?.forEach { it.delete() }
-            val destFile = File(context.filesDir, "profile_photo_$userId.$extension")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                destFile.outputStream().use { output -> input.copyTo(output) }
-            } ?: error("No se pudo leer la imagen")
-            destFile.absolutePath
-        }.onSuccess { savedPath ->
-            profilePhotoPath = savedPath
-            prefs.edit().putString(profilePhotoKey(userId), savedPath).apply()
-            uiMessage = "Foto de perfil actualizada"
-        }.onFailure {
-            uiMessage = "No se pudo actualizar la foto de perfil"
+        viewModelScope.launch {
+            productoRepository.uploadProfilePhoto(userId, uri)
+                .onSuccess { savedPath ->
+                    profilePhotoPath = savedPath
+                    prefs.edit().putString(profilePhotoKey(userId), savedPath).apply()
+                    uiMessage = "Foto de perfil actualizada"
+                }
+                .onFailure {
+                    uiMessage = "No se pudo actualizar la foto de perfil"
+                }
         }
     }
 
@@ -575,11 +793,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun profilePhotoKey(userId: Int): String = "profile_photo_$userId"
 
-    private fun resolveProfilePhotoPath(userId: Int): String? {
+    private suspend fun resolveProfilePhotoPath(userId: Int): String? {
+        productoRepository.resolveProfilePhotoUrl(userId)?.let { remotePath ->
+            prefs.edit().putString(profilePhotoKey(userId), remotePath).apply()
+            return remotePath
+        }
+
         val storedPath = prefs.getString(profilePhotoKey(userId), null)
-        if (!storedPath.isNullOrBlank() && File(storedPath).exists()) {
+        if (!storedPath.isNullOrBlank() && (storedPath.startsWith("http") || File(storedPath).exists())) {
             return storedPath
         }
+
         val fallback = getApplication<Application>().filesDir.listFiles()
             ?.firstOrNull { it.name.startsWith("profile_photo_$userId.") }
             ?.absolutePath
@@ -650,5 +874,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         prefs.edit().putString(addressesKey(), array.toString()).apply()
+    }
+
+    private fun putProductInCart(producto: Producto): Boolean {
+        val index = _carrito.indexOfFirst { it.producto.id == producto.id }
+        return if (index >= 0) {
+            _carrito[index] = ItemCarrito(producto)
+            false
+        } else {
+            _carrito.add(ItemCarrito(producto))
+            true
+        }
+    }
+
+    private fun parseOfferAmount(input: String): Double? {
+        val clean = input.trim()
+        if (clean.isBlank()) {
+            uiMessage = "Escribe una oferta válida"
+            return null
+        }
+        val digits = clean
+            .replace(",", ".")
+            .filter { it.isDigit() || it == '.' }
+        val amount = digits.toDoubleOrNull()
+        if (amount == null || amount <= 0.0) {
+            uiMessage = "Introduce un importe válido"
+            return null
+        }
+        return amount
     }
 }
