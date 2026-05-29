@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -52,6 +55,7 @@ fun SearchScreen(
     onProductoClick: (Producto) -> Unit,
     onBackHome: () -> Unit
 ) {
+    val adaptive = rememberAdaptiveLayout()
     var query by remember { mutableStateOf("") }
     var categoriaSeleccionada by remember { mutableStateOf<String?>(null) }
 
@@ -123,7 +127,12 @@ fun SearchScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 16.dp)
+                .padding(horizontal = adaptive.horizontalPadding)
+                .padding(
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() +
+                        if (adaptive.isCompactWidth) 8.dp else 12.dp,
+                    bottom = 16.dp
+                )
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -143,7 +152,7 @@ fun SearchScreen(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Volver",
                         tint = Color.White,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(if (adaptive.isCompactWidth) 24.dp else 28.dp)
                     )
                 }
 
@@ -158,7 +167,7 @@ fun SearchScreen(
                     },
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 12.dp),
+                        .padding(start = if (adaptive.isCompactWidth) 8.dp else 12.dp),
                     shape = RoundedCornerShape(28.dp),
                     singleLine = true,
                     leadingIcon = {
@@ -168,7 +177,7 @@ fun SearchScreen(
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(if (adaptive.isCompactWidth) 14.dp else 18.dp))
 
             if (categoriaSeleccionada == null) {
                 if (categoriasFiltradas.isEmpty()) {
@@ -179,25 +188,26 @@ fun SearchScreen(
                     Text(
                         text = "Categorias disponibles",
                         color = Color.White.copy(alpha = 0.92f),
-                        fontSize = 18.sp,
+                        fontSize = if (adaptive.isCompactWidth) 16.sp else 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
                         text = "Explora lo que hay publicado por tipo de prenda",
                         color = Color(0xFFB8B8B8),
-                        fontSize = 13.sp
+                        fontSize = if (adaptive.isCompactWidth) 12.sp else 13.sp
                     )
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(if (adaptive.isCompactWidth) 10.dp else 14.dp))
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 88.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(if (adaptive.isCompactWidth) 10.dp else 12.dp)
                     ) {
                         items(categoriasFiltradas, key = { it }) { categoria ->
                             CategorySearchCard(
                                 categoria = categoria,
+                                compact = adaptive.isCompactWidth,
                                 onClick = {
                                     categoriaSeleccionada = categoria
                                     query = ""
@@ -210,7 +220,7 @@ fun SearchScreen(
                 Text(
                     text = categoriaSeleccionada.orEmpty(),
                     color = Color.White,
-                    fontSize = 22.sp,
+                    fontSize = if (adaptive.isCompactWidth) 20.sp else 22.sp,
                     fontWeight = FontWeight.Bold
                 )
 
@@ -221,7 +231,7 @@ fun SearchScreen(
                     fontSize = 13.sp
                 )
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(if (adaptive.isCompactWidth) 10.dp else 14.dp))
 
                 if (productosFiltrados.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -229,11 +239,11 @@ fun SearchScreen(
                     }
                 } else {
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
+                        columns = GridCells.Fixed(adaptive.gridColumns),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 88.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(if (adaptive.isCompactWidth) 8.dp else 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(if (adaptive.isCompactWidth) 8.dp else 10.dp)
                     ) {
                         items(productosFiltrados, key = { it.id }) { producto ->
                             ProductoItem(
@@ -252,7 +262,7 @@ fun SearchScreen(
 }
 
 @Composable
-private fun CategorySearchCard(categoria: String, onClick: () -> Unit) {
+private fun CategorySearchCard(categoria: String, compact: Boolean, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -268,12 +278,12 @@ private fun CategorySearchCard(categoria: String, onClick: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp)
+                .padding(horizontal = if (compact) 14.dp else 18.dp, vertical = if (compact) 14.dp else 16.dp)
         ) {
             Text(
                 text = categoria,
                 color = Color.White,
-                fontSize = 19.sp,
+                fontSize = if (compact) 17.sp else 19.sp,
                 fontWeight = FontWeight.Bold
             )
         }
