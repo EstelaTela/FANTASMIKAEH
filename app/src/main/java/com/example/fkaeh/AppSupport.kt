@@ -76,7 +76,8 @@ data class DireccionGuardada(
     val direccion: String,
     val ciudad: String,
     val codigoPostal: String,
-    val provincia: String
+    val provincia: String,
+    val idDireccion: Int? = null
 ) {
     fun resumen(): String = listOf(direccion, codigoPostal, ciudad, provincia)
         .filter { it.isNotBlank() }

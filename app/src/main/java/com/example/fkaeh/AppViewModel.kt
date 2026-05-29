@@ -77,6 +77,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var checkoutTarget by mutableStateOf(CheckoutTarget.CART)
         private set
 
+    var showOtpInput by mutableStateOf(false)
+        private set
+        private var emailTemporal = ""
+
     private val productoRepository = ProductoRepository(application.applicationContext)
 
     init {
@@ -196,7 +200,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     cargarOfferThreads()
                 }
                 .onFailure {
-                    loginError = if (it.message?.contains("Credenciales") == true) {
+                    val message = it.message.orEmpty()
+                    loginError = if (
+                        message.contains("Credenciales", ignoreCase = true) ||
+                        message.contains("incorrect", ignoreCase = true) ||
+                        message.contains("autentic", ignoreCase = true)
+                    ) {
                         "Email o contraseña incorrectos"
                     } else {
                         "Error de conexión al servidor"
@@ -229,16 +238,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isLoading = true
             registroError = null
+            emailTemporal = correo
+
             productoRepository.registrarUsuario(nombre, correo, contrasena, telefonoNormalizado)
                 .onSuccess {
-                    isLoggedIn = true
-                    currentUser = it
-                    profilePhotoPath = resolveProfilePhotoPath(it.id_usuario)
-                    cargarHistorial()
-                    cargarDirecciones()
-                    cargarProductosDesdeBD()
-                    cargarFavoritos()
-                    cargarOfferThreads()
+                    showOtpInput = true
                 }
                 .onFailure {
                     registroError = if (it.message?.contains("registrado") == true) {
@@ -249,6 +253,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             isLoading = false
         }
+    }
+
+    fun verificarCodigoOtp(codigo: String) {
+        if (codigo.length < 6) {
+            registroError = "Introduce el código de 6 dígitos"
+            return
+        }
+        viewModelScope.launch {
+            isLoading = true
+            registroError = null
+            productoRepository.verificarOtp(emailTemporal, codigo)
+                .onSuccess { usuarioVerificado ->
+                    isLoggedIn = true
+                    currentUser = usuarioVerificado
+                    showOtpInput = false
+                    profilePhotoPath = resolveProfilePhotoPath(usuarioVerificado.id_usuario)
+                    cargarHistorial()
+                    cargarDirecciones()
+                    cargarProductosDesdeBD()
+                    cargarFavoritos()
+                    cargarOfferThreads()
+                }
+                .onFailure {
+                    registroError = "Código incorrecto o expirado"
+                }
+            isLoading = false
+        }
+    }
+
+    fun cancelarOtp() {
+        showOtpInput = false
+        emailTemporal = ""
+        registroError = null
     }
 
     fun limpiarErrorRegistro() {
@@ -271,6 +308,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         activeOfferThreadId = null
         profilePhotoPath = null
         uiMessage = null
+        showOtpInput = false
+        emailTemporal = ""
     }
 
     fun cargarOfferThreads(showErrors: Boolean = true) {
@@ -585,17 +624,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         uiMessage = null
     }
 
-    fun verificarParaRecuperar(correo: String, telefono: String, onResult: (Int?) -> Unit) {
+    fun solicitarCodigoRecuperacion(correo: String, telefono: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
-            productoRepository.verificarParaRecuperar(correo, telefono)
-                .onSuccess { onResult(it) }
-                .onFailure { onResult(null) }
+            productoRepository.solicitarCodigoRecuperacion(correo, telefono)
+                .onSuccess { onResult(true, null) }
+                .onFailure { onResult(false, it.message) }
         }
     }
 
-    fun cambiarPassword(idUsuario: Int, nuevaContrasena: String, onResult: (Boolean) -> Unit) {
+    fun restablecerPasswordConCodigo(
+        correo: String,
+        codigo: String,
+        nuevaContrasena: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
         viewModelScope.launch {
-            onResult(productoRepository.cambiarPassword(idUsuario, nuevaContrasena).isSuccess)
+            productoRepository.restablecerPasswordConCodigo(correo, codigo, nuevaContrasena)
+                .onSuccess { onResult(true, null) }
+                .onFailure { onResult(false, it.message) }
         }
     }
 
@@ -631,26 +677,44 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun guardarDireccion(direccion: DireccionGuardada) {
+        val idUsuario = currentUser?.id_usuario ?: return
         val existe = _direccionesGuardadas.any {
             it.alias.equals(direccion.alias, ignoreCase = true) && it.resumen() == direccion.resumen()
         }
         if (!existe) {
-            _direccionesGuardadas.add(0, direccion)
-            persistirDirecciones()
-            uiMessage = "Dirección guardada"
+            viewModelScope.launch {
+                productoRepository.guardarDireccion(idUsuario, direccion)
+                    .onSuccess { direccionGuardada ->
+                        _direccionesGuardadas.add(0, direccionGuardada)
+                        persistirDirecciones()
+                        uiMessage = "Dirección guardada"
+                    }
+                    .onFailure {
+                        _direccionesGuardadas.add(0, direccion)
+                        persistirDirecciones()
+                        uiMessage = "Dirección guardada solo en este dispositivo"
+                    }
+            }
         }
     }
 
     fun eliminarDireccion(direccion: DireccionGuardada) {
+        val idUsuario = currentUser?.id_usuario
         _direccionesGuardadas.remove(direccion)
         persistirDirecciones()
         uiMessage = "Dirección eliminada"
+        if (idUsuario != null) {
+            viewModelScope.launch {
+                productoRepository.eliminarDireccion(idUsuario, direccion)
+            }
+        }
     }
 
     fun cargarDirecciones() {
+        val idUsuario = currentUser?.id_usuario
         _direccionesGuardadas.clear()
-        val raw = prefs.getString(addressesKey(), null) ?: return
-        runCatching {
+        val raw = prefs.getString(addressesKey(), null)
+        if (raw != null) runCatching {
             val array = JSONArray(raw)
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
@@ -662,9 +726,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         direccion = item.optString("direccion"),
                         ciudad = item.optString("ciudad"),
                         codigoPostal = item.optString("codigoPostal"),
-                        provincia = item.optString("provincia")
+                        provincia = item.optString("provincia"),
+                        idDireccion = item.optInt("idDireccion").takeIf { it > 0 }
                     )
                 )
+            }
+        }
+        if (idUsuario != null) {
+            viewModelScope.launch {
+                productoRepository.getDirecciones(idUsuario)
+                    .onSuccess { direccionesRemotas ->
+                        _direccionesGuardadas.clear()
+                        _direccionesGuardadas.addAll(direccionesRemotas)
+                        persistirDirecciones()
+                    }
             }
         }
     }
@@ -870,6 +945,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     put("ciudad", direccion.ciudad)
                     put("codigoPostal", direccion.codigoPostal)
                     put("provincia", direccion.provincia)
+                    direccion.idDireccion?.let { put("idDireccion", it) }
                 }
             )
         }

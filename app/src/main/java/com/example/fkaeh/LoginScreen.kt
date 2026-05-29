@@ -211,13 +211,13 @@ fun RecuperarPasswordDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     var paso             by remember { mutableStateOf("VERIFICAR") }
     var email            by remember { mutableStateOf("") }
     var telefono         by remember { mutableStateOf("") }
+    var codigo           by remember { mutableStateOf("") }
     var nuevaPassword    by remember { mutableStateOf("") }
     var confirmaPassword by remember { mutableStateOf("") }
     var passVisible      by remember { mutableStateOf(false) }
     var confirmaVisible  by remember { mutableStateOf(false) }
     var error            by remember { mutableStateOf("") }
     var cargando         by remember { mutableStateOf(false) }
-    var idUsuario        by remember { mutableStateOf<Int?>(null) }
 
     val purpleColor = Color(0xFF8C52FF)
 
@@ -248,7 +248,7 @@ fun RecuperarPasswordDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                     Text("Recuperar contraseña",
                         color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
-                    Text("Introduce tu correo y teléfono para verificar tu identidad.",
+                    Text("Introduce tu correo y teléfono. Te enviaremos un código de verificación.",
                         color = Color.Gray, fontSize = 13.sp)
                     Spacer(Modifier.height(16.dp))
 
@@ -289,10 +289,14 @@ fun RecuperarPasswordDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                                     error = "Rellena todos los campos"; return@Button
                                 }
                                 cargando = true
-                                vm.verificarParaRecuperar(email, telefono) { id ->
+                                vm.solicitarCodigoRecuperacion(email, telefono.filter { it.isDigit() }) { exito, mensaje ->
                                     cargando = false
-                                    if (id != null) { idUsuario = id; paso = "NUEVA_PASSWORD"; error = "" }
-                                    else error = "No existe ninguna cuenta con esos datos"
+                                    if (exito) {
+                                        paso = "NUEVA_PASSWORD"
+                                        error = ""
+                                    } else {
+                                        error = mensaje ?: "No existe ninguna cuenta con esos datos"
+                                    }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -311,9 +315,20 @@ fun RecuperarPasswordDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                     Text("Nueva contraseña",
                         color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
-                    Text("Identidad verificada. Introduce tu nueva contraseña.",
+                    Text("Introduce el código recibido y tu nueva contraseña.",
                         color = Color(0xFF4CAF50), fontSize = 13.sp)
                     Spacer(Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = codigo,
+                        onValueChange = { codigo = it.filter { ch -> ch.isDigit() }.take(6); error = "" },
+                        placeholder = { Text("Código de 6 dígitos") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors,
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(10.dp))
 
                     OutlinedTextField(
                         value = nuevaPassword,
@@ -363,15 +378,16 @@ fun RecuperarPasswordDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                         Button(
                             onClick = {
                                 when {
+                                    codigo.length != 6 -> error = "Introduce el código de 6 dígitos"
                                     nuevaPassword.isBlank() -> error = "Introduce una contraseña"
                                     nuevaPassword.length < 4 -> error = "Mínimo 4 caracteres"
                                     nuevaPassword != confirmaPassword -> error = "Las contraseñas no coinciden"
                                     else -> {
                                         cargando = true
-                                        vm.cambiarPassword(idUsuario!!, nuevaPassword) { exito ->
+                                        vm.restablecerPasswordConCodigo(email, codigo, nuevaPassword) { exito, mensaje ->
                                             cargando = false
                                             if (exito) paso = "EXITO"
-                                            else error = "Error al guardar. Intenta de nuevo"
+                                            else error = mensaje ?: "Error al guardar. Intenta de nuevo"
                                         }
                                     }
                                 }

@@ -214,7 +214,7 @@ fun ProfileScreen(
                 expanded = openSection == "ayuda",
                 onClick = { openSection = openSection.toggle("ayuda") }
             ) {
-                PlaceholderContent("Escríbenos a soporte@fkaeh.com")
+                PlaceholderContent("Escríbenos a fasntasmikaeh@gmail.com")
             }
 
             ProfileMenuItem(
@@ -639,141 +639,172 @@ private fun ConfiguracionContent(
     var showDesactivarDialog by remember { mutableStateOf(false) }
     var showEliminarDialog by remember { mutableStateOf(false) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Email, contentDescription = null, tint = customPurple, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(10.dp))
-            Column {
-                Text(
-                    text = vm.text("email").uppercase(),
-                    color = ProfileMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(text = user?.correo.orEmpty(), color = ProfileText, fontSize = 14.sp)
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        SettingsSection(title = "Acceso") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Email, contentDescription = null, tint = customPurple, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = vm.text("email").uppercase(),
+                        color = ProfileMuted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(text = user?.correo.orEmpty(), color = ProfileText, fontSize = 14.sp)
+                }
             }
         }
 
-        Box {
-            OutlinedTextField(
-                value = vm.currentLanguage.label,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text(vm.text("language")) },
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    IconButton(onClick = { languageExpanded = true }) {
-                        Icon(Icons.Outlined.Language, contentDescription = null, tint = customPurple)
+        SettingsDivider()
+
+        SettingsSection(title = "Preferencias del dispositivo") {
+            Box {
+                OutlinedTextField(
+                    value = vm.currentLanguage.label,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(vm.text("language")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        IconButton(onClick = { languageExpanded = true }) {
+                            Icon(Icons.Outlined.Language, contentDescription = null, tint = customPurple)
+                        }
+                    }
+                )
+                DropdownMenu(
+                    expanded = languageExpanded,
+                    onDismissRequest = { languageExpanded = false }
+                ) {
+                    AppLanguage.entries.forEach { language ->
+                        DropdownMenuItem(
+                            text = { Text(language.label) },
+                            onClick = {
+                                vm.setLanguage(language)
+                                languageExpanded = false
+                            }
+                        )
                     }
                 }
-            )
-            DropdownMenu(
-                expanded = languageExpanded,
-                onDismissRequest = { languageExpanded = false }
+            }
+
+            SettingGap()
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                AppLanguage.entries.forEach { language ->
-                    DropdownMenuItem(
-                        text = { Text(language.label) },
-                        onClick = {
-                            vm.setLanguage(language)
-                            languageExpanded = false
-                        }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Notificaciones", color = ProfileText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Avisos de carrito, favoritos y publicaciones",
+                        color = ProfileMuted,
+                        fontSize = 12.sp
                     )
                 }
+                Switch(
+                    checked = vm.notificationsEnabled,
+                    onCheckedChange = { enabled ->
+                        vm.updateNotificationsEnabled(enabled)
+                        if (enabled) onRequestNotificationPermission()
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = customPurple
+                    )
+                )
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Notificaciones", color = ProfileText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "Avisos de carrito, favoritos y publicaciones",
-                    color = ProfileMuted,
-                    fontSize = 12.sp
-                )
-            }
-            Switch(
-                checked = vm.notificationsEnabled,
-                onCheckedChange = { enabled ->
-                    vm.updateNotificationsEnabled(enabled)
-                    if (enabled) onRequestNotificationPermission()
-                },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = customPurple
-                )
+        SettingsDivider()
+
+        SettingsSection(title = "Seguridad") {
+            Text("Cambiar contraseña", color = Color.White, fontWeight = FontWeight.Bold)
+
+            SettingGap()
+
+            OutlinedTextField(
+                value = passwordActual,
+                onValueChange = { passwordActual = it },
+                label = { Text("Contraseña actual") },
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    Icon(Icons.Outlined.Lock, contentDescription = null, tint = customPurple)
+                }
             )
+
+            SettingGap()
+
+            OutlinedTextField(
+                value = nuevaPassword,
+                onValueChange = { nuevaPassword = it },
+                label = { Text("Nueva contraseña") },
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    Icon(Icons.Outlined.Lock, contentDescription = null, tint = customPurple)
+                }
+            )
+
+            SettingGap()
+
+            OutlinedTextField(
+                value = confirmarPassword,
+                onValueChange = { confirmarPassword = it },
+                label = { Text("Confirmación de contraseña") },
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    Icon(Icons.Outlined.Lock, contentDescription = null, tint = customPurple)
+                }
+            )
+
+            SettingGap()
+
+            Button(
+                onClick = {
+                    vm.cambiarMiPassword(passwordActual, nuevaPassword, confirmarPassword)
+                    passwordActual = ""
+                    nuevaPassword = ""
+                    confirmarPassword = ""
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = customPurple),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("${vm.text("change_password")} · ${vm.text("save")}")
+            }
         }
 
-        Text("Cambiar contraseña", color = Color.White, fontWeight = FontWeight.Bold)
+        SettingsDivider()
 
-        OutlinedTextField(
-            value = passwordActual,
-            onValueChange = { passwordActual = it },
-            label = { Text("Contraseña actual") },
-            modifier = Modifier.fillMaxWidth(),
-            trailingIcon = {
-                Icon(Icons.Outlined.Lock, contentDescription = null, tint = customPurple)
+        SettingsSection(title = "Gestión de cuenta") {
+            Text(
+                text = "Opciones sensibles de la cuenta",
+                color = ProfileMuted,
+                fontSize = 12.sp
+            )
+
+            SettingGap()
+
+            Button(
+                onClick = { showDesactivarDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B1E1E)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Desactivar cuenta", color = Color.White)
             }
-        )
 
-        OutlinedTextField(
-            value = nuevaPassword,
-            onValueChange = { nuevaPassword = it },
-            label = { Text("Nueva contraseña") },
-            modifier = Modifier.fillMaxWidth(),
-            trailingIcon = {
-                Icon(Icons.Outlined.Lock, contentDescription = null, tint = customPurple)
+            SettingGap()
+
+            Button(
+                onClick = { showEliminarDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD50000)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Eliminar cuenta", color = Color.White, fontWeight = FontWeight.Bold)
             }
-        )
-
-        OutlinedTextField(
-            value = confirmarPassword,
-            onValueChange = { confirmarPassword = it },
-            label = { Text("Confirmación de contraseña") },
-            modifier = Modifier.fillMaxWidth(),
-            trailingIcon = {
-                Icon(Icons.Outlined.Lock, contentDescription = null, tint = customPurple)
-            }
-        )
-
-        Button(
-            onClick = {
-                vm.cambiarMiPassword(passwordActual, nuevaPassword, confirmarPassword)
-                passwordActual = ""
-                nuevaPassword = ""
-                confirmarPassword = ""
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = customPurple),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Text("${vm.text("change_password")} · ${vm.text("save")}")
-        }
-
-        Spacer(Modifier.height(8.dp))
-        Text("Cuenta", color = Color.White, fontWeight = FontWeight.Bold)
-
-        Button(
-            onClick = { showDesactivarDialog = true },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B1E1E)),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Text("Desactivar cuenta", color = Color.White)
-        }
-
-        Button(
-            onClick = { showEliminarDialog = true },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD50000)),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Text("Eliminar cuenta", color = Color.White, fontWeight = FontWeight.Bold)
         }
     }
 
@@ -877,6 +908,41 @@ private fun ConfiguracionContent(
             }
         )
     }
+}
+
+@Composable
+private fun SettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title.uppercase(),
+            color = customPurple,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black
+        )
+        Spacer(Modifier.height(8.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 2.dp, end = 2.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun SettingGap() {
+    Spacer(Modifier.height(12.dp))
+}
+
+@Composable
+private fun SettingsDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(vertical = 10.dp),
+        color = ProfileBorder.copy(alpha = 0.85f)
+    )
 }
 
 @Composable

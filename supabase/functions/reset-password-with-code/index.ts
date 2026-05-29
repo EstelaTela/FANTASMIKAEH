@@ -28,6 +28,26 @@ async function sha256(input: string) {
     .join("");
 }
 
+async function findAuthUserByEmail(email: string) {
+  let page = 1;
+  const perPage = 1000;
+
+  while (true) {
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (error) throw error;
+
+    const user = data.users.find((item) => item.email?.toLowerCase() === email);
+    if (user) return user;
+
+    if (data.users.length < perPage) return null;
+    page += 1;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -57,6 +77,21 @@ Deno.serve(async (req) => {
 
     const codeHash = await sha256(`${normalizedEmail}:${normalizedCode}`);
 
+    const { data: usuario, error: userLookupError } = await supabase
+      .from("usuarios")
+      .select("id_usuario, nombre")
+      .eq("correo", normalizedEmail)
+      .limit(1)
+      .maybeSingle();
+
+    if (userLookupError) {
+      return jsonResponse(500, { error: "No se pudo comprobar el usuario" });
+    }
+
+    if (!usuario) {
+      return jsonResponse(404, { error: "No existe ninguna cuenta con ese correo" });
+    }
+
     const { data: verification, error: verificationError } = await supabase
       .from("email_verification_codes")
       .select("id, expires_at, used_at")
@@ -82,13 +117,31 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: "El codigo ha caducado" });
     }
 
-    const { error: updatePasswordError } = await supabase
-      .from("usuarios")
-      .update({ contrasena: password })
-      .eq("correo", normalizedEmail);
+    const authUser = await findAuthUserByEmail(normalizedEmail);
 
-    if (updatePasswordError) {
-      return jsonResponse(500, { error: "No se pudo actualizar la contrasena" });
+    if (authUser) {
+      const { error: authUpdateError } = await supabase.auth.admin.updateUserById(authUser.id, {
+        password,
+        email_confirm: true,
+      });
+
+      if (authUpdateError) {
+        return jsonResponse(500, { error: "No se pudo actualizar la contrasena de acceso" });
+      }
+    } else {
+      const { error: authCreateError } = await supabase.auth.admin.createUser({
+        email: normalizedEmail,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          id_usuario: usuario.id_usuario,
+          nombre: usuario.nombre,
+        },
+      });
+
+      if (authCreateError) {
+        return jsonResponse(500, { error: "No se pudo crear el acceso del usuario" });
+      }
     }
 
     const { error: updateCodeError } = await supabase

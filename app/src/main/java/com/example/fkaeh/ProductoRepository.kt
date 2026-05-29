@@ -13,6 +13,56 @@ import java.net.URL
 
 class ProductoRepository(private val context: Context) {
 
+    suspend fun loginUsuario(correo: String, contrasena: String): Result<UsuarioBD> {
+        return try {
+            val authBody = JSONObject().apply {
+                put("email", correo)
+                put("password", contrasena)
+            }
+
+            val (authCode, authResponse) = ApiClient.postRaw(
+                context,
+                "/auth/v1/token?grant_type=password",
+                authBody
+            )
+
+            if (authCode !in 200..299) {
+                val errorDesc = runCatching {
+                    JSONObject(authResponse).optString("error_description", "")
+                }.getOrDefault("")
+                return Result.failure(
+                    Exception(
+                        if (errorDesc.contains("Invalid", ignoreCase = true))
+                            "Email o contraseña incorrectos"
+                        else "Error de autenticación"
+                    )
+                )
+            }
+
+            val accessToken = JSONObject(authResponse).optString("access_token", "")
+            if (accessToken.isBlank()) {
+                return Result.failure(Exception("No se recibió token de acceso"))
+            }
+
+            val userEndpoint = "/rest/v1/usuarios" +
+                    "?correo=eq.${URLEncoder.encode(correo, "UTF-8")}" +
+                    "&select=*,roles(nombre_rol)" +
+                    "&limit=1"
+
+            val userArray = ApiClient.getArrayWithToken(context, userEndpoint, accessToken)
+
+            if (userArray.length() == 0) {
+                return Result.failure(Exception("Usuario no encontrado en base de datos"))
+            }
+
+            Result.success(parseUsuario(userArray.getJSONObject(0)))
+
+        } catch (e: Exception) {
+            android.util.Log.e("LOGIN_DEBUG", "${e.javaClass.simpleName}: ${e.message}")
+            Result.failure(Exception("No se pudo conectar al servidor"))
+        }
+    }
+
     private suspend fun fetchCategoryOptions(): List<CategoryOption> {
         val endpoints = listOf(
             "/rest/v1/categorias?select=id_categoria,nombre_categoria&order=id_categoria.asc",
@@ -49,69 +99,84 @@ class ProductoRepository(private val context: Context) {
         return emptyList()
     }
 
-    suspend fun loginUsuario(correo: String, contrasena: String): Result<UsuarioBD> {
-        return try {
-            val correoEnc = URLEncoder.encode(correo, "UTF-8")
-            val passEnc = URLEncoder.encode(contrasena, "UTF-8")
-            val baseEndpoint = "/rest/v1/usuarios" +
-                "?correo=eq.$correoEnc" +
-                "&contrasena=eq.$passEnc" +
-                "&select=*,roles(nombre_rol)" +
-                "&limit=1"
-
-            val array = try {
-                ApiClient.getArray(context, "$baseEndpoint&activo=eq.true")
-            } catch (_: Exception) {
-                ApiClient.getArray(context, baseEndpoint)
-            }
-
-            if (array.length() == 0) {
-                Result.failure(Exception("Credenciales incorrectas"))
-            } else {
-                Result.success(parseUsuario(array.getJSONObject(0)))
-            }
-        } catch (_: Exception) {
-            Result.failure(Exception("No se pudo conectar al servidor"))
-        }
-    }
+    // 🔧 REEMPLAZA ESTE MÉTODO en ProductoRepository.kt
 
     suspend fun registrarUsuario(
         nombre: String,
         correo: String,
         contrasena: String,
         telefono: String
-    ): Result<UsuarioBD> {
-        return try {
-            val body = JSONObject().apply {
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        return@withContext try {
+
+            val signupBody = JSONObject().apply {
+                put("email", correo)
+                put("password", contrasena)
+            }
+
+            val signupUrl = "${ApiClient.getBaseUrl(context)}/auth/v1/signup"
+
+            val conn = (URL(signupUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = 8_000
+                readTimeout = 8_000
+                setRequestProperty("apikey", ApiClient.SUPABASE_ANON_KEY)
+                setRequestProperty("Content-Type", "application/json")
+            }
+
+            val bodyString = signupBody.toString()
+
+            conn.outputStream.use { output ->
+                output.write(bodyString.toByteArray())
+            }
+
+            val code = conn.responseCode
+
+            val responseText = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+
+            conn.disconnect()
+
+            if (code !in 200..299) {
+                val msg = runCatching { JSONObject(responseText).optString("msg", "") }.getOrDefault("")
+                return@withContext Result.failure(
+                    Exception(
+                        if (msg.contains("already registered", true)) "Correo ya registrado"
+                        else "Error al registrar: $code"
+                    )
+                )
+            }
+
+            val userBody = JSONObject().apply {
                 put("nombre", nombre)
                 put("correo", correo)
-                put("contrasena", contrasena)
                 put("telefono", telefono)
                 put("id_rol", 2)
             }
-            val array = ApiClient.postArray(context, "/rest/v1/usuarios", body)
+            val array = ApiClient.postArray(context, "/rest/v1/usuarios", userBody)
 
-            if (array.length() == 0) {
-                Result.failure(Exception("No se pudo crear el usuario"))
-            } else {
-                val u = array.getJSONObject(0)
-                if (u.has("code") || u.has("message")) {
-                    val msg = u.optString("message", "Error al registrar")
-                    Result.failure(
-                        Exception(
-                            if (msg.contains("unique", true) || msg.contains("duplicate", true)) {
-                                "Correo ya registrado"
-                            } else {
-                                msg
-                            }
-                        )
-                    )
-                } else {
-                    Result.success(parseUsuario(u))
+            val maybeError = array.optJSONObject(0)
+            if (maybeError != null && (maybeError.has("code") || maybeError.has("message"))) {
+                val msg = maybeError.optString("message", "")
+                if (msg.contains("unique", true) || msg.contains("duplicate", true)) {
+                    return@withContext Result.success(Unit)
                 }
+                return@withContext Result.failure(Exception(msg))
             }
-        } catch (_: Exception) {
-            Result.failure(Exception("No se pudo conectar al servidor"))
+
+            Result.success(Unit)
+
+        } catch (e: java.net.SocketTimeoutException) {
+            Result.failure(Exception("Timeout: El servidor tardó demasiado en responder"))
+        } catch (e: java.net.ConnectException) {
+            android.util.Log.e("SIGNUP_DEBUG", "❌ ERROR DE CONEXIÓN: No se puede conectar a Supabase")
+            android.util.Log.e("SIGNUP_DEBUG", "Verifica: 1) Internet funciona  2) URL es correcta  3) Supabase está online")
+            Result.failure(Exception("No se puede conectar a Supabase"))
+        } catch (e: Exception) {
+            android.util.Log.e("SIGNUP_DEBUG", "❌ EXCEPCIÓN: ${e.javaClass.simpleName}")
+            android.util.Log.e("SIGNUP_DEBUG", "Mensaje: ${e.message}")
+            Result.failure(Exception("No se pudo conectar al servidor: ${e.message}"))
         }
     }
 
@@ -119,14 +184,14 @@ class ProductoRepository(private val context: Context) {
         return try {
             fetchCategoryOptions()
             val endpointConVendedor = "/rest/v1/productos" +
-                "?select=*,usuarios(nombre),fotos_producto(url_foto,es_principal)" +
-                "&order=fecha_publicacion.desc"
+                    "?select=*,usuarios(nombre),fotos_producto(url_foto,es_principal)" +
+                    "&order=fecha_publicacion.desc"
             val endpointConVendedorAlt = "/rest/v1/productos" +
-                "?select=*,Usuarios(nombre),fotos_producto(url_foto,es_principal)" +
-                "&order=fecha_publicacion.desc"
+                    "?select=*,Usuarios(nombre),fotos_producto(url_foto,es_principal)" +
+                    "&order=fecha_publicacion.desc"
             val endpointSimple = "/rest/v1/productos" +
-                "?select=*,fotos_producto(url_foto,es_principal)" +
-                "&order=fecha_publicacion.desc"
+                    "?select=*,fotos_producto(url_foto,es_principal)" +
+                    "&order=fecha_publicacion.desc"
 
             val array = runCatching { ApiClient.getArray(context, endpointConVendedor) }
                 .recoverCatching { ApiClient.getArray(context, endpointConVendedorAlt) }
@@ -319,19 +384,92 @@ class ProductoRepository(private val context: Context) {
         }
     }
 
-    suspend fun verificarParaRecuperar(correo: String, telefono: String): Result<Int> {
+    suspend fun solicitarCodigoRecuperacion(correo: String, telefono: String): Result<Unit> {
         return try {
-            val correoEnc = URLEncoder.encode(correo, "UTF-8")
+            val correoNormalizado = correo.trim().lowercase()
+            val correoEnc = URLEncoder.encode(correoNormalizado, "UTF-8")
             val telefonoEnc = URLEncoder.encode(telefono, "UTF-8")
             val endpoint = "/rest/v1/usuarios" +
-                "?correo=eq.$correoEnc" +
-                "&telefono=eq.$telefonoEnc" +
-                "&select=id_usuario" +
-                "&limit=1"
+                    "?correo=eq.$correoEnc" +
+                    "&telefono=eq.$telefonoEnc" +
+                    "&select=id_usuario" +
+                    "&limit=1"
 
             val array = ApiClient.getArray(context, endpoint)
-            if (array.length() == 0) Result.failure(Exception("Usuario no encontrado"))
-            else Result.success(array.getJSONObject(0).getInt("id_usuario"))
+            if (array.length() == 0) {
+                return Result.failure(Exception("Usuario no encontrado"))
+            }
+
+            val body = JSONObject().apply { put("email", correoNormalizado) }
+            val (code, responseText) = ApiClient.postRaw(
+                context,
+                "/auth/v1/recover",
+                body
+            )
+
+            if (code in 200..299) {
+                Result.success(Unit)
+            } else {
+                val msg = runCatching {
+                    val json = JSONObject(responseText)
+                    json.optString("msg").ifBlank { json.optString("error_description") }.ifBlank { json.optString("error") }
+                }.getOrDefault("")
+                Result.failure(Exception(msg.ifBlank { "No se pudo enviar el codigo" }))
+            }
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo conectar al servidor"))
+        }
+    }
+
+    suspend fun restablecerPasswordConCodigo(
+        correo: String,
+        codigo: String,
+        nuevaContrasena: String
+    ): Result<Unit> {
+        return try {
+            val verifyBody = JSONObject().apply {
+                put("email", correo.trim().lowercase())
+                put("token", codigo.trim())
+                put("type", "recovery")
+            }
+            val (verifyCode, verifyResponseText) = ApiClient.postRaw(
+                context,
+                "/auth/v1/verify",
+                verifyBody
+            )
+
+            if (verifyCode !in 200..299) {
+                val msg = runCatching {
+                    val json = JSONObject(verifyResponseText)
+                    json.optString("msg").ifBlank { json.optString("error_description") }.ifBlank { json.optString("error") }
+                }.getOrDefault("")
+                return Result.failure(Exception(msg.ifBlank { "Codigo incorrecto o expirado" }))
+            }
+
+            val accessToken = JSONObject(verifyResponseText).optString("access_token")
+            if (accessToken.isBlank()) {
+                return Result.failure(Exception("No se pudo abrir la sesion de recuperacion"))
+            }
+
+            val updateBody = JSONObject().apply {
+                put("password", nuevaContrasena)
+            }
+            val (updateCode, updateResponseText) = ApiClient.putRawWithToken(
+                context,
+                "/auth/v1/user",
+                accessToken,
+                updateBody
+            )
+
+            if (updateCode in 200..299) {
+                Result.success(Unit)
+            } else {
+                val msg = runCatching {
+                    val json = JSONObject(updateResponseText)
+                    json.optString("msg").ifBlank { json.optString("error_description") }.ifBlank { json.optString("error") }
+                }.getOrDefault("")
+                Result.failure(Exception(msg.ifBlank { "No se pudo actualizar la contrasena" }))
+            }
         } catch (_: Exception) {
             Result.failure(Exception("No se pudo conectar al servidor"))
         }
@@ -339,15 +477,11 @@ class ProductoRepository(private val context: Context) {
 
     suspend fun verificarPasswordActual(idUsuario: Int, passwordActual: String): Result<Boolean> {
         return try {
-            val passwordEnc = URLEncoder.encode(passwordActual, "UTF-8")
-            val endpoint = "/rest/v1/usuarios" +
-                "?id_usuario=eq.$idUsuario" +
-                "&contrasena=eq.$passwordEnc" +
-                "&select=id_usuario" +
-                "&limit=1"
-
-            val array = ApiClient.getArray(context, endpoint)
-            Result.success(array.length() > 0)
+            // CAMBIO: Ahora verificamos la contraseña contra Supabase Auth
+            // Necesitaremos el email del usuario para esto
+            // Por ahora, devolvemos un placeholder - esto se debe implementar mejor
+            // consultando al usuario primero y luego intentando autenticarse
+            Result.failure(Exception("Verifica la contraseña a través de Supabase Auth"))
         } catch (_: Exception) {
             Result.failure(Exception("No se pudo verificar la contraseña actual"))
         }
@@ -355,12 +489,88 @@ class ProductoRepository(private val context: Context) {
 
     suspend fun cambiarPassword(idUsuario: Int, nuevaContrasena: String): Result<Unit> {
         return try {
-            val body = JSONObject().apply { put("contrasena", nuevaContrasena) }
-            val code = ApiClient.patch(context, "/rest/v1/usuarios?id_usuario=eq.$idUsuario", body)
-            if (code in 200..299) Result.success(Unit)
-            else Result.failure(Exception("Error al cambiar contraseña: $code"))
+            // CAMBIO: Ahora cambias la contraseña a través de Supabase Auth
+            // Necesitarías el email y hacer una llamada a /auth/v1/user
+            // con el accessToken del usuario logueado
+            Result.failure(Exception("Cambio de contraseña debe hacerse vía Supabase Auth"))
         } catch (_: Exception) {
             Result.failure(Exception("No se pudo conectar al servidor"))
+        }
+    }
+
+    suspend fun getDirecciones(idUsuario: Int): Result<List<DireccionGuardada>> {
+        return try {
+            val array = ApiClient.getArray(
+                context,
+                "/rest/v1/direcciones?id_usuario=eq.$idUsuario&select=*&order=id_direccion.desc"
+            )
+            val direcciones = buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    add(
+                        DireccionGuardada(
+                            alias = item.optString("alias").ifBlank { "Direccion" },
+                            nombreCompleto = item.optString("nombre_completo"),
+                            telefono = item.optString("telefono"),
+                            direccion = item.optString("calle"),
+                            ciudad = item.optString("ciudad"),
+                            codigoPostal = item.optString("cod_postal"),
+                            provincia = item.optString("provincia").ifBlank { item.optString("pais") },
+                            idDireccion = item.optInt("id_direccion").takeIf { it > 0 }
+                        )
+                    )
+                }
+            }
+            Result.success(direcciones)
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudieron cargar las direcciones"))
+        }
+    }
+
+    suspend fun guardarDireccion(idUsuario: Int, direccion: DireccionGuardada): Result<DireccionGuardada> {
+        return try {
+            val body = JSONObject().apply {
+                put("id_usuario", idUsuario)
+                put("calle", direccion.direccion)
+                put("ciudad", direccion.ciudad)
+                put("cod_postal", direccion.codigoPostal)
+                put("pais", direccion.provincia.ifBlank { "Espana" })
+                put("alias", direccion.alias)
+                put("nombre_completo", direccion.nombreCompleto)
+                put("telefono", direccion.telefono)
+                put("provincia", direccion.provincia)
+            }
+            val array = ApiClient.postArray(context, "/rest/v1/direcciones", body)
+            val first = array.optJSONObject(0)
+            if (first == null || first.has("code") || first.has("message")) {
+                Result.failure(Exception(first?.optString("message", "No se pudo guardar la direccion") ?: "No se pudo guardar la direccion"))
+            } else {
+                Result.success(
+                    direccion.copy(
+                        idDireccion = first.optInt("id_direccion").takeIf { it > 0 }
+                    )
+                )
+            }
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo guardar la direccion"))
+        }
+    }
+
+    suspend fun eliminarDireccion(idUsuario: Int, direccion: DireccionGuardada): Result<Unit> {
+        return try {
+            val endpoint = direccion.idDireccion?.let {
+                "/rest/v1/direcciones?id_usuario=eq.$idUsuario&id_direccion=eq.$it"
+            } ?: run {
+                val calle = URLEncoder.encode(direccion.direccion, "UTF-8")
+                val ciudad = URLEncoder.encode(direccion.ciudad, "UTF-8")
+                val codigoPostal = URLEncoder.encode(direccion.codigoPostal, "UTF-8")
+                "/rest/v1/direcciones?id_usuario=eq.$idUsuario&calle=eq.$calle&ciudad=eq.$ciudad&cod_postal=eq.$codigoPostal"
+            }
+            val code = ApiClient.delete(context, endpoint)
+            if (code in 200..299) Result.success(Unit)
+            else Result.failure(Exception("No se pudo eliminar la direccion"))
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo eliminar la direccion"))
         }
     }
 
@@ -387,6 +597,7 @@ class ProductoRepository(private val context: Context) {
                 put("nombre", usuario.nombre)
                 put("correo", usuario.correo)
                 put("telefono", usuario.telefono)
+                // NO actualizar contraseña aquí
             }
             val code = ApiClient.patch(context, "/rest/v1/usuarios?id_usuario=eq.${usuario.id_usuario}", body)
             if (code in 200..299) Result.success(Unit)
@@ -473,9 +684,9 @@ class ProductoRepository(private val context: Context) {
     suspend fun getOfferThreads(idUsuario: Int): Result<List<OfferThread>> {
         return try {
             val endpoint = "/rest/v1/oferta_conversaciones" +
-                "?or=(id_comprador.eq.$idUsuario,id_vendedor.eq.$idUsuario)" +
-                "&select=*,oferta_mensajes(*)" +
-                "&order=created_at.desc"
+                    "?or=(id_comprador.eq.$idUsuario,id_vendedor.eq.$idUsuario)" +
+                    "&select=*,oferta_mensajes(*)" +
+                    "&order=created_at.desc"
             val array = ApiClient.getArray(context, endpoint)
             val threads = buildList {
                 for (i in 0 until array.length()) {
@@ -491,11 +702,11 @@ class ProductoRepository(private val context: Context) {
     suspend fun ensureOfferThread(producto: Producto, comprador: UsuarioBD): Result<String> {
         return try {
             val lookup = "/rest/v1/oferta_conversaciones" +
-                "?id_producto=eq.${producto.id}" +
-                "&id_comprador=eq.${comprador.id_usuario}" +
-                "&id_vendedor=eq.${producto.idVendedor}" +
-                "&select=id_conversacion" +
-                "&limit=1"
+                    "?id_producto=eq.${producto.id}" +
+                    "&id_comprador=eq.${comprador.id_usuario}" +
+                    "&id_vendedor=eq.${producto.idVendedor}" +
+                    "&select=id_conversacion" +
+                    "&limit=1"
             val existing = ApiClient.getArray(context, lookup)
             if (existing.length() > 0) {
                 return Result.success(existing.getJSONObject(0).getLong("id_conversacion").toString())
@@ -568,6 +779,59 @@ class ProductoRepository(private val context: Context) {
             Result.failure(Exception("No se pudo actualizar la oferta"))
         }
     }
+
+    suspend fun verificarOtp(correo: String, codigo: String): Result<UsuarioBD> =
+        withContext(Dispatchers.IO) {
+            return@withContext try {
+                val tipos = listOf("email", "signup")
+
+                for (tipo in tipos) {
+                    val verifyBody = JSONObject().apply {
+                        put("type", tipo)
+                        put("email", correo)
+                        put("token", codigo)
+                    }
+
+                    android.util.Log.e("OTP_DEBUG", "Intentando tipo='$tipo' token='$codigo' email='$correo'")
+
+                    val verifyUrl = "${ApiClient.getBaseUrl(context)}/auth/v1/verify"
+                    val conn = (URL(verifyUrl).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        doOutput = true
+                        connectTimeout = 40_000
+                        readTimeout = 40_000
+                        setRequestProperty("apikey", ApiClient.SUPABASE_ANON_KEY)
+                        setRequestProperty("Content-Type", "application/json")
+                    }
+                    conn.outputStream.use { it.write(verifyBody.toString().toByteArray()) }
+                    val code = conn.responseCode
+                    val responseText = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                        ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    conn.disconnect()
+
+                    android.util.Log.e("OTP_DEBUG", "tipo='$tipo' -> HTTP $code | Body: $responseText")
+
+                    if (code in 200..299) {
+                        val correoEnc = URLEncoder.encode(correo, "UTF-8")
+                        val array = ApiClient.getArray(
+                            context,
+                            "/rest/v1/usuarios?correo=eq.$correoEnc&select=*,roles(nombre_rol)&limit=1"
+                        )
+                        return@withContext if (array.length() == 0) {
+                            Result.failure(Exception("Usuario no encontrado tras verificar"))
+                        } else {
+                            Result.success(parseUsuario(array.getJSONObject(0)))
+                        }
+                    }
+                }
+
+                Result.failure(Exception("Código incorrecto o expirado"))
+            } catch (e: Exception) {
+                android.util.Log.e("OTP_DEBUG", "Excepción: ${e.javaClass.simpleName} - ${e.message}")
+                Result.failure(Exception("Código incorrecto o expirado"))
+            }
+        }
+
 
     private suspend fun getIds(endpoint: String, field: String): List<Int> {
         return try {
