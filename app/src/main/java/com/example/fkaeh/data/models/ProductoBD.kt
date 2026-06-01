@@ -1,4 +1,6 @@
-package com.example.fkaeh
+package com.example.fkaeh.data.models
+
+import com.example.fkaeh.core.CategoryCatalog
 
 data class ProductoBD(
     val idProducto: Int,

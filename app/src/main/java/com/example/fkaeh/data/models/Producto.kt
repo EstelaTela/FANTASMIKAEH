@@ -1,4 +1,4 @@
-package com.example.fkaeh
+package com.example.fkaeh.data.models
 
 const val ESTADO_CENSURADO_ADMIN = "CENSURADO_ADMIN"
 

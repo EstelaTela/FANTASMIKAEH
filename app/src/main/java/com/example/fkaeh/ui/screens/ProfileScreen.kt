@@ -1,4 +1,12 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.screens
+
+import com.example.fkaeh.R
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.components.*
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -85,11 +93,11 @@ import com.example.fkaeh.ui.theme.customPurple
 import java.io.File
 import androidx.compose.foundation.text.KeyboardOptions
 
-private val ProfileCard = Color(0xD9101010)
-private val ProfileBorder = Color(0xFF2A2A2A)
-private val ProfileText = Color.White
-private val ProfileMuted = Color(0xFFB7B7B7)
-private val DialogContainer = Color(0xFF151515)
+private val ProfileCard = AppColors.ProfileCard
+private val ProfileBorder = AppColors.ProfileBorder
+private val ProfileText = AppColors.TextPrimary
+private val ProfileMuted = AppColors.TextMuted
+private val DialogContainer = AppColors.DialogContainer
 
 @Composable
 fun ProfileScreen(
@@ -234,7 +242,7 @@ fun ProfileScreen(
                     .fillMaxWidth()
                     .height(52.dp),
                 shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD50000))
+                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Danger)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -659,34 +667,6 @@ private fun ConfiguracionContent(
         SettingsDivider()
 
         SettingsSection(title = "Preferencias del dispositivo") {
-            Box {
-                OutlinedTextField(
-                    value = vm.currentLanguage.label,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(vm.text("language")) },
-                    modifier = Modifier.fillMaxWidth(),
-                    trailingIcon = {
-                        IconButton(onClick = { languageExpanded = true }) {
-                            Icon(Icons.Outlined.Language, contentDescription = null, tint = customPurple)
-                        }
-                    }
-                )
-                DropdownMenu(
-                    expanded = languageExpanded,
-                    onDismissRequest = { languageExpanded = false }
-                ) {
-                    AppLanguage.entries.forEach { language ->
-                        DropdownMenuItem(
-                            text = { Text(language.label) },
-                            onClick = {
-                                vm.setLanguage(language)
-                                languageExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
 
             SettingGap()
 
@@ -789,7 +769,7 @@ private fun ConfiguracionContent(
             Button(
                 onClick = { showDesactivarDialog = true },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B1E1E)),
+                colors = ButtonDefaults.buttonColors(containerColor = AppColors.DangerSoft),
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Text("Desactivar cuenta", color = Color.White)
@@ -800,7 +780,7 @@ private fun ConfiguracionContent(
             Button(
                 onClick = { showEliminarDialog = true },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD50000)),
+                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Danger),
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Text("Eliminar cuenta", color = Color.White, fontWeight = FontWeight.Bold)
@@ -822,7 +802,7 @@ private fun ConfiguracionContent(
                             if (ok) onLogout()
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B1E1E))
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.DangerSoft)
                 ) {
                     Text("Desactivar")
                 }
@@ -860,7 +840,7 @@ private fun ConfiguracionContent(
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD50000))
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.Danger)
                 ) {
                     Text("Eliminar")
                 }

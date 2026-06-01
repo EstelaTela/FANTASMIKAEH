@@ -1,4 +1,4 @@
-package com.example.fkaeh
+package com.example.fkaeh.core
 
 enum class AppLanguage(val code: String, val label: String) {
     ES("es", "Español"),

@@ -1,11 +1,16 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.screens
+
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.components.*
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,9 +42,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-val Purple = Color(0xFF8C52FF)
-val BlackBg = Color(0xFF0A0A0A)
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.data.models.Producto
+import com.example.fkaeh.ui.components.ProductoItem
+import com.example.fkaeh.ui.common.Purple
+import com.example.fkaeh.R
 
 @Composable
 fun HomeScreen(

@@ -1,4 +1,12 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.screens
+
+import com.example.fkaeh.R
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.components.*
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.fkaeh.core.ApiClient
 
 @Composable
 fun ConfigScreen(onVolver: () -> Unit) {

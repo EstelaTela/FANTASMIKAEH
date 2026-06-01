@@ -1,4 +1,10 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.screens
+
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.components.*
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -19,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GppBad
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -47,6 +54,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.fkaeh.core.ApiClient
+import com.example.fkaeh.ui.common.AppColors
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.ui.common.BlackFieldColors
+import com.example.fkaeh.data.models.ESTADO_CENSURADO_ADMIN
+import com.example.fkaeh.data.models.Producto
+import com.example.fkaeh.R
+import com.example.fkaeh.data.models.UsuarioBD
 import com.example.fkaeh.ui.theme.customPurple
 
 private enum class AdminSection {
@@ -305,6 +320,7 @@ private fun ProductAdminCard(
                         .background(Color(0xFF1A1A1A), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
+                    val censurado = producto.estadoPrenda.equals(ESTADO_CENSURADO_ADMIN, ignoreCase = true)
                     if (fotoUrl != null) {
                         AsyncImage(
                             model = ImageRequest.Builder(context)
@@ -315,6 +331,9 @@ private fun ProductAdminCard(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
+                        if (censurado) {
+                            CensoredPhotoOverlay()
+                        }
                     } else {
                         Text(
                             producto.nombre.take(1).uppercase(),
@@ -322,6 +341,9 @@ private fun ProductAdminCard(
                             fontWeight = FontWeight.Black,
                             fontSize = 26.sp
                         )
+                        if (censurado) {
+                            CensoredPhotoOverlay()
+                        }
                     }
                 }
 
@@ -334,7 +356,7 @@ private fun ProductAdminCard(
                             fontWeight = FontWeight.Bold
                         )
                         if (producto.estadoPrenda.equals(ESTADO_CENSURADO_ADMIN, ignoreCase = true)) {
-                            EstadoProductoChip("Censurado", Color(0xFF5A1C1C), Color(0xFFFF8A8A))
+                            EstadoProductoChip("", Color(0xFF5A1C1C), Color(0xFFFF8A8A))
                         }
                     }
                     Text("ID producto: ${producto.id}", color = Color(0xFFBDBDBD), fontSize = 12.sp)
@@ -377,13 +399,40 @@ private fun ProductAdminCard(
                     onClick = { onEliminar(producto) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD50000))
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.Danger)
                 ) {
                     Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(8.dp))
                     Text("Eliminar", color = Color.White)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CensoredPhotoOverlay() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.58f), RoundedCornerShape(16.dp))
+            .padding(8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(
+                Icons.Outlined.VisibilityOff,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(28.dp)
+            )
+            Text(
+                "Censura",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
         }
     }
 }
@@ -449,7 +498,7 @@ private fun ConfirmarAccionProductoDialog(
 ) {
     val titulo = if (accion == ProductAdminAction.CENSOR) "Censurar producto" else "Eliminar producto"
     val mensaje = if (accion == ProductAdminAction.CENSOR) {
-        "Se ocultará este producto del catálogo público, se borrarán sus fotos visibles y quedará marcado como censurado en administración."
+        "Se ocultará este producto del catálogo público y quedará marcado como censurado en administración."
     } else {
         "Se eliminará este producto de forma permanente junto con sus referencias visibles en la app."
     }
@@ -463,7 +512,7 @@ private fun ConfirmarAccionProductoDialog(
             Button(
                 onClick = onConfirmar,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (accion == ProductAdminAction.CENSOR) Color(0xFF7A2B2B) else Color(0xFFD50000)
+                    containerColor = if (accion == ProductAdminAction.CENSOR) Color(0xFF7A2B2B) else AppColors.Danger
                 )
             ) {
                 Text(if (accion == ProductAdminAction.CENSOR) "Censurar" else "Eliminar")

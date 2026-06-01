@@ -1,4 +1,7 @@
-package com.example.fkaeh
+package com.example.fkaeh.data.repository
+
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
 
 import android.content.Context
 import android.net.Uri
@@ -55,7 +58,12 @@ class ProductoRepository(private val context: Context) {
                 return Result.failure(Exception("Usuario no encontrado en base de datos"))
             }
 
-            Result.success(parseUsuario(userArray.getJSONObject(0)))
+            val usuario = parseUsuario(userArray.getJSONObject(0))
+            if (usuario.activo == false) {
+                return Result.failure(Exception("ACCOUNT_DISABLED"))
+            }
+
+            Result.success(usuario)
 
         } catch (e: Exception) {
             android.util.Log.e("LOGIN_DEBUG", "${e.javaClass.simpleName}: ${e.message}")
@@ -99,6 +107,12 @@ class ProductoRepository(private val context: Context) {
         return emptyList()
     }
 
+    private suspend fun existeUsuarioConCorreo(correo: String): Boolean {
+        val correoEnc = URLEncoder.encode(correo, "UTF-8")
+        val endpoint = "/rest/v1/usuarios?correo=eq.$correoEnc&select=id_usuario&limit=1"
+        return ApiClient.getArray(context, endpoint).length() > 0
+    }
+
     // 🔧 REEMPLAZA ESTE MÉTODO en ProductoRepository.kt
 
     suspend fun registrarUsuario(
@@ -108,9 +122,13 @@ class ProductoRepository(private val context: Context) {
         telefono: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
         return@withContext try {
+            val correoNormalizado = correo.trim().lowercase()
+            if (existeUsuarioConCorreo(correoNormalizado)) {
+                return@withContext Result.failure(Exception("Correo ya registrado"))
+            }
 
             val signupBody = JSONObject().apply {
-                put("email", correo)
+                put("email", correoNormalizado)
                 put("password", contrasena)
             }
 
@@ -148,9 +166,18 @@ class ProductoRepository(private val context: Context) {
                 )
             }
 
+            val signupJson = runCatching { JSONObject(responseText) }.getOrNull()
+            val identities = signupJson
+                ?.optJSONObject("user")
+                ?.optJSONArray("identities")
+                ?: signupJson?.optJSONArray("identities")
+            if (identities != null && identities.length() == 0) {
+                return@withContext Result.failure(Exception("Correo ya registrado"))
+            }
+
             val userBody = JSONObject().apply {
                 put("nombre", nombre)
-                put("correo", correo)
+                put("correo", correoNormalizado)
                 put("telefono", telefono)
                 put("id_rol", 2)
             }
@@ -160,7 +187,7 @@ class ProductoRepository(private val context: Context) {
             if (maybeError != null && (maybeError.has("code") || maybeError.has("message"))) {
                 val msg = maybeError.optString("message", "")
                 if (msg.contains("unique", true) || msg.contains("duplicate", true)) {
-                    return@withContext Result.success(Unit)
+                    return@withContext Result.failure(Exception("Correo ya registrado"))
                 }
                 return@withContext Result.failure(Exception(msg))
             }
@@ -283,31 +310,17 @@ class ProductoRepository(private val context: Context) {
 
                 val mimeType = context.contentResolver.getType(photoUri)?.takeIf { it.isNotBlank() } ?: "image/jpeg"
                 val objectPath = profilePhotoObjectPath(userId)
-                val bucketUrl = "${ApiClient.getBaseUrl(context)}/storage/v1/object/fotos-productos/$objectPath"
-
-                val conn = (URL(bucketUrl).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    connectTimeout = 30_000
-                    readTimeout = 30_000
-                    setRequestProperty("apikey", ApiClient.SUPABASE_ANON_KEY)
-                    setRequestProperty("Authorization", "Bearer ${ApiClient.SUPABASE_ANON_KEY}")
-                    setRequestProperty("Content-Type", mimeType)
-                    setRequestProperty("x-upsert", "true")
+                val updateResponse = uploadProfilePhotoBytes(objectPath, photoBytes, mimeType, method = "PUT")
+                val finalResponse = if (updateResponse.first in 200..299) {
+                    updateResponse
+                } else {
+                    uploadProfilePhotoBytes(objectPath, photoBytes, mimeType, method = "POST")
                 }
 
-                conn.outputStream.use { it.write(photoBytes) }
-                val code = conn.responseCode
-                val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
-                    ?.bufferedReader()
-                    ?.use { it.readText() }
-                    .orEmpty()
-                conn.disconnect()
-
-                if (code in 200..299) {
+                if (finalResponse.first in 200..299) {
                     Result.success(cacheBustedProfilePhotoUrl(userId))
                 } else {
-                    Result.failure(Exception("Error al subir foto de perfil: $code ${text.take(180)}".trim()))
+                    Result.failure(Exception("Error al subir foto de perfil: ${finalResponse.first} ${finalResponse.second.take(180)}".trim()))
                 }
             } catch (e: Exception) {
                 Result.failure(e)
@@ -368,11 +381,8 @@ class ProductoRepository(private val context: Context) {
     suspend fun censurarProducto(idProducto: Int): Result<Unit> {
         return try {
             ApiClient.delete(context, "/rest/v1/favoritos?id_producto=eq.$idProducto")
-            ApiClient.delete(context, "/rest/v1/fotos_producto?id_producto=eq.$idProducto")
 
             val body = JSONObject().apply {
-                put("nombre", "Producto retirado por administracion")
-                put("descripcion", "Contenido ocultado por incumplir las normas de la plataforma.")
                 put("estado_prenda", ESTADO_CENSURADO_ADMIN)
             }
 
@@ -381,6 +391,20 @@ class ProductoRepository(private val context: Context) {
             else Result.failure(Exception("No se pudo censurar el producto"))
         } catch (_: Exception) {
             Result.failure(Exception("No se pudo censurar el producto"))
+        }
+    }
+
+    suspend fun descensurarProducto(idProducto: Int): Result<Unit> {
+        return try {
+            val body = JSONObject().apply {
+                put("estado_prenda", "Disponible")
+            }
+
+            val code = ApiClient.patch(context, "/rest/v1/productos?id_producto=eq.$idProducto", body)
+            if (code in 200..299) Result.success(Unit)
+            else Result.failure(Exception("No se pudo descensurar el producto"))
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo descensurar el producto"))
         }
     }
 
@@ -469,6 +493,58 @@ class ProductoRepository(private val context: Context) {
                     json.optString("msg").ifBlank { json.optString("error_description") }.ifBlank { json.optString("error") }
                 }.getOrDefault("")
                 Result.failure(Exception(msg.ifBlank { "No se pudo actualizar la contrasena" }))
+            }
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo conectar al servidor"))
+        }
+    }
+
+    suspend fun solicitarCodigoReactivacion(correo: String): Result<Unit> {
+        return try {
+            val body = JSONObject().apply {
+                put("email", correo.trim().lowercase())
+                put("purpose", "account_reactivation")
+            }
+            val (code, responseText) = ApiClient.postRaw(
+                context,
+                "/functions/v1/send-verification-code",
+                body
+            )
+
+            if (code in 200..299) {
+                Result.success(Unit)
+            } else {
+                val msg = runCatching {
+                    val json = JSONObject(responseText)
+                    json.optString("error").ifBlank { json.optString("message") }
+                }.getOrDefault("")
+                Result.failure(Exception(msg.ifBlank { "No se pudo enviar el codigo" }))
+            }
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo conectar al servidor"))
+        }
+    }
+
+    suspend fun reactivarCuentaConCodigo(correo: String, codigo: String): Result<Unit> {
+        return try {
+            val body = JSONObject().apply {
+                put("email", correo.trim().lowercase())
+                put("code", codigo.trim())
+            }
+            val (code, responseText) = ApiClient.postRaw(
+                context,
+                "/functions/v1/reactivate-account-with-code",
+                body
+            )
+
+            if (code in 200..299) {
+                Result.success(Unit)
+            } else {
+                val msg = runCatching {
+                    val json = JSONObject(responseText)
+                    json.optString("error").ifBlank { json.optString("message") }
+                }.getOrDefault("")
+                Result.failure(Exception(msg.ifBlank { "Codigo incorrecto o expirado" }))
             }
         } catch (_: Exception) {
             Result.failure(Exception("No se pudo conectar al servidor"))
@@ -859,6 +935,35 @@ class ProductoRepository(private val context: Context) {
     }
 
     private fun profilePhotoObjectPath(userId: Int): String = "profiles/profile_$userId"
+
+    private fun uploadProfilePhotoBytes(
+        objectPath: String,
+        photoBytes: ByteArray,
+        mimeType: String,
+        method: String
+    ): Pair<Int, String> {
+        val bucketUrl = "${ApiClient.getBaseUrl(context)}/storage/v1/object/fotos-productos/$objectPath"
+        val conn = (URL(bucketUrl).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            doOutput = true
+            connectTimeout = 30_000
+            readTimeout = 30_000
+            setRequestProperty("apikey", ApiClient.SUPABASE_ANON_KEY)
+            setRequestProperty("Authorization", "Bearer ${ApiClient.SUPABASE_ANON_KEY}")
+            setRequestProperty("Content-Type", mimeType)
+            setRequestProperty("Cache-Control", "no-cache")
+            setRequestProperty("x-upsert", "true")
+        }
+
+        conn.outputStream.use { it.write(photoBytes) }
+        val code = conn.responseCode
+        val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            .orEmpty()
+        conn.disconnect()
+        return code to text
+    }
 
     private fun profilePhotoPublicUrl(userId: Int): String =
         "${ApiClient.getBaseUrl(context)}/storage/v1/object/public/fotos-productos/${profilePhotoObjectPath(userId)}"

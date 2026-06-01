@@ -1,5 +1,9 @@
 package com.example.fkaeh
 
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.screens.*
+
 import android.Manifest
 import android.app.Activity
 import android.os.Build
@@ -23,7 +27,6 @@ import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -48,6 +51,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.fkaeh.ui.screens.AdminScreen
+import com.example.fkaeh.ui.screens.CartScreen
+import com.example.fkaeh.ui.screens.ChatScreen
+import com.example.fkaeh.ui.screens.HomeScreen
+import com.example.fkaeh.ui.screens.SellScreen
 import com.example.fkaeh.ui.theme.FKAEHTheme
 import com.example.fkaeh.ui.theme.customPurple
 

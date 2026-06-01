@@ -1,4 +1,4 @@
-package com.example.fkaeh
+package com.example.fkaeh.data.models
 
 data class UsuarioBD(
     val id_usuario: Int,

@@ -4,6 +4,7 @@
 
 - `send-verification-code`: genera un codigo de 6 digitos, lo guarda en `email_verification_codes` y envia el email con Resend.
 - `reset-password-with-code`: valida el codigo y cambia la contrasena del usuario.
+- `reactivate-account-with-code`: valida el codigo de reactivacion y vuelve a poner `usuarios.activo = true`.
 
 ## Variables de entorno
 
@@ -28,6 +29,7 @@ supabase secrets set EMAIL_LOGO_URL="https://gomfmabmfytmrhvwmugh.supabase.co/st
 ```bash
 supabase functions deploy send-verification-code
 supabase functions deploy reset-password-with-code
+supabase functions deploy reactivate-account-with-code
 ```
 
 ## Nota sobre el icono de marca

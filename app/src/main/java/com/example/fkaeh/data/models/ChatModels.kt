@@ -1,4 +1,4 @@
-package com.example.fkaeh
+package com.example.fkaeh.data.models
 
 enum class OfferStatus {
     PENDING,

@@ -1,4 +1,10 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.components
+
+import com.example.fkaeh.R
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.ui.common.*
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

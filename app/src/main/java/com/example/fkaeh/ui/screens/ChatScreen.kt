@@ -1,4 +1,10 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.screens
+
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.components.*
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -39,20 +45,25 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.data.models.OfferEntry
+import com.example.fkaeh.data.models.OfferStatus
+import com.example.fkaeh.data.models.OfferThread
+import com.example.fkaeh.data.models.Producto
+import com.example.fkaeh.R
 import com.example.fkaeh.ui.theme.customPurple
 import kotlinx.coroutines.delay
-import kotlin.math.max
 
 private data class OfferConversationUi(
     val thread: OfferThread,
@@ -110,7 +121,7 @@ private fun OfferInboxScreen(
     onExploreHome: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        androidx.compose.foundation.Image(
+        Image(
             painter = painterResource(id = R.drawable.subirproducto),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
@@ -254,7 +265,7 @@ private fun OfferThreadScreen(
 ) {
     val latestOffer = thread.latestOffer()
     Box(modifier = Modifier.fillMaxSize()) {
-        androidx.compose.foundation.Image(
+        Image(
             painter = painterResource(id = R.drawable.carrito),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
@@ -651,7 +662,7 @@ private fun ProductThumb(product: Producto) {
 }
 
 @Composable
-private fun AvatarBadge(label: String, size: androidx.compose.ui.unit.Dp) {
+private fun AvatarBadge(label: String, size: Dp) {
     Box(
         modifier = Modifier
             .size(size)

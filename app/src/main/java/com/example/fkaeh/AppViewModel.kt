@@ -1,5 +1,9 @@
 package com.example.fkaeh
 
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+
 import android.app.Application
 import android.content.Context
 import android.net.Uri
@@ -63,6 +67,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var loginError by mutableStateOf<String?>(null)
         private set
+    var showReactivarCuentaDialog by mutableStateOf(false)
+        private set
     var registroError by mutableStateOf<String?>(null)
         private set
 
@@ -79,7 +85,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     var showOtpInput by mutableStateOf(false)
         private set
-        private var emailTemporal = ""
+
+    private var emailTemporal = ""
+    private var reactivarEmailTemporal = ""
+    private var reactivarPasswordTemporal = ""
 
     private val productoRepository = ProductoRepository(application.applicationContext)
 
@@ -137,13 +146,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val finalProduct = producto.copy(precio = priceOverride ?: producto.precio)
         putProductInCart(finalProduct)
-        checkoutTarget = if (forceAddressStep) {
-            CheckoutTarget.ADDRESS
-        } else if (_direccionesGuardadas.isNotEmpty()) {
-            CheckoutTarget.PAYMENT
-        } else {
-            CheckoutTarget.ADDRESS
-        }
+        checkoutTarget = CheckoutTarget.ADDRESS
         checkoutRequestId = System.currentTimeMillis()
     }
 
@@ -201,14 +204,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 .onFailure {
                     val message = it.message.orEmpty()
-                    loginError = if (
-                        message.contains("Credenciales", ignoreCase = true) ||
-                        message.contains("incorrect", ignoreCase = true) ||
-                        message.contains("autentic", ignoreCase = true)
-                    ) {
-                        "Email o contraseña incorrectos"
+                    if (message == "ACCOUNT_DISABLED") {
+                        reactivarEmailTemporal = correo.trim().lowercase()
+                        reactivarPasswordTemporal = contrasena
+                        showReactivarCuentaDialog = true
+                        loginError = null
                     } else {
-                        "Error de conexión al servidor"
+                        loginError = if (
+                            message.contains("Credenciales", ignoreCase = true) ||
+                            message.contains("incorrect", ignoreCase = true) ||
+                            message.contains("autentic", ignoreCase = true)
+                        ) {
+                            "Email o contraseña incorrectos"
+                        } else {
+                            "Error de conexión al servidor"
+                        }
                     }
                 }
             isLoading = false
@@ -219,10 +229,46 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         loginError = null
     }
 
+    fun cerrarDialogoReactivacion() {
+        showReactivarCuentaDialog = false
+    }
+
+    fun solicitarCodigoReactivacion(onResult: (Boolean, String?) -> Unit) {
+        val correo = reactivarEmailTemporal
+        if (correo.isBlank()) {
+            onResult(false, "No se pudo preparar la reactivación")
+            return
+        }
+        viewModelScope.launch {
+            productoRepository.solicitarCodigoReactivacion(correo)
+                .onSuccess { onResult(true, null) }
+                .onFailure { onResult(false, it.message) }
+        }
+    }
+
+    fun reactivarCuentaConCodigo(codigo: String, onResult: (Boolean, String?) -> Unit) {
+        val correo = reactivarEmailTemporal
+        val password = reactivarPasswordTemporal
+        if (correo.isBlank() || password.isBlank()) {
+            onResult(false, "No se pudo preparar la reactivación")
+            return
+        }
+        viewModelScope.launch {
+            productoRepository.reactivarCuentaConCodigo(correo, codigo)
+                .onSuccess {
+                    showReactivarCuentaDialog = false
+                    onResult(true, null)
+                    login(correo, password)
+                }
+                .onFailure { onResult(false, it.message) }
+        }
+    }
+
     fun registrar(nombre: String, correo: String, contrasena: String, telefono: String) {
+        val correoNormalizado = correo.trim().lowercase()
         val telefonoNormalizado = telefono.filter { it.isDigit() }
         when {
-            !correo.contains("@") -> {
+            !correoNormalizado.contains("@") -> {
                 registroError = "Introduce un correo válido"
                 return
             }
@@ -238,14 +284,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isLoading = true
             registroError = null
-            emailTemporal = correo
+            emailTemporal = correoNormalizado
 
-            productoRepository.registrarUsuario(nombre, correo, contrasena, telefonoNormalizado)
+            productoRepository.registrarUsuario(nombre, correoNormalizado, contrasena, telefonoNormalizado)
                 .onSuccess {
                     showOtpInput = true
                 }
                 .onFailure {
-                    registroError = if (it.message?.contains("registrado") == true) {
+                    registroError = if (it.message?.contains("registrado", ignoreCase = true) == true) {
                         "Este correo ya tiene una cuenta"
                     } else {
                         "Error de conexión al servidor"

@@ -1,8 +1,16 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.screens
+
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.components.*
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,6 +63,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.fkaeh.core.ApiClient
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.ui.common.BlackFieldColors
+import com.example.fkaeh.data.models.CheckoutTarget
+import com.example.fkaeh.core.DireccionGuardada
+import com.example.fkaeh.data.models.ItemCarrito
+import com.example.fkaeh.ui.common.Purple
+import com.example.fkaeh.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -113,6 +129,21 @@ fun CartScreen(vm: AppViewModel) {
         estadoPago = "Esperando autenticacion segura"
     }
 
+    val resetPaymentAttempt = {
+        referenciaPago = generatePaymentReference()
+        codigo3ds = ""
+        error3ds = null
+        mostrar3ds = false
+        procesandoPago = false
+        estadoPago = "Esperando autenticacion segura"
+    }
+
+    val selectSavedAddress: (DireccionGuardada) -> Unit = { saved ->
+        direccionSeleccionada = saved
+        direccionPreparada = saved
+        guardarDireccionNueva = false
+    }
+
     LaunchedEffect(vm.checkoutRequestId, vm.direccionesGuardadas) {
         if (vm.checkoutRequestId == 0L || vm.checkoutRequestId == lastHandledCheckoutRequest) return@LaunchedEffect
 
@@ -122,15 +153,8 @@ fun CartScreen(vm: AppViewModel) {
             CheckoutTarget.PAYMENT -> {
                 val saved = vm.direccionesGuardadas.firstOrNull()
                 if (saved != null) {
-                    direccionSeleccionada = saved
-                    direccionPreparada = saved
-                    guardarDireccionNueva = false
-                    referenciaPago = generatePaymentReference()
-                    codigo3ds = ""
-                    error3ds = null
-                    mostrar3ds = false
-                    procesandoPago = false
-                    estadoPago = "Esperando autenticacion segura"
+                    selectSavedAddress(saved)
+                    resetPaymentAttempt()
                     step = CartStep.PAYMENT
                 } else {
                     step = CartStep.ADDRESS
@@ -199,6 +223,7 @@ fun CartScreen(vm: AppViewModel) {
                 }
 
                 CartStep.ADDRESS -> {
+                    val camposNuevaDireccionHabilitados = direccionSeleccionada == null
                     val addressFieldColors = TextFieldDefaults.colors(
                         focusedContainerColor = Color(0xFF111111),
                         unfocusedContainerColor = Color(0xFF111111),
@@ -233,12 +258,13 @@ fun CartScreen(vm: AppViewModel) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
+                                            .clickable { selectSavedAddress(saved) }
                                             .padding(14.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         RadioButton(
                                             selected = direccionSeleccionada == saved,
-                                            onClick = { direccionSeleccionada = saved }
+                                            onClick = { selectSavedAddress(saved) }
                                         )
                                         Spacer(Modifier.width(10.dp))
                                         Column(modifier = Modifier.weight(1f)) {
@@ -248,6 +274,7 @@ fun CartScreen(vm: AppViewModel) {
                                         }
                                         IconButton(onClick = {
                                             if (direccionSeleccionada == saved) direccionSeleccionada = null
+                                            if (direccionPreparada == saved) direccionPreparada = null
                                             vm.eliminarDireccion(saved)
                                         }) {
                                             Icon(Icons.Outlined.Delete, null, tint = Color.Red.copy(alpha = 0.7f))
@@ -257,105 +284,122 @@ fun CartScreen(vm: AppViewModel) {
                             }
                             item {
                                 Spacer(Modifier.height(6.dp))
-                                Text("O añade una nueva", color = Color.White, fontWeight = FontWeight.Bold)
+                                if (camposNuevaDireccionHabilitados) {
+                                    Text("O añade una nueva", color = Color.White, fontWeight = FontWeight.Bold)
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            direccionSeleccionada = null
+                                            direccionPreparada = null
+                                            guardarDireccionNueva = false
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                                        shape = RoundedCornerShape(22.dp)
+                                    ) {
+                                        Text("Usar una direccion nueva", fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
 
-                        item {
-                            OutlinedTextField(
-                                value = alias,
-                                onValueChange = { alias = it },
-                                label = { Text("Alias") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = addressFieldColors,
-                                shape = RoundedCornerShape(18.dp)
-                            )
-                        }
-                        item {
-                            OutlinedTextField(
-                                value = nombreCompleto,
-                                onValueChange = {
-                                    nombreCompleto = it
-                                    if (it.isNotBlank()) direccionSeleccionada = null
-                                },
-                                label = { Text("Nombre completo") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = addressFieldColors,
-                                shape = RoundedCornerShape(18.dp)
-                            )
-                        }
-                        item {
-                            OutlinedTextField(
-                                value = telefono,
-                                onValueChange = {
-                                    telefono = it.filter { ch -> ch.isDigit() }.take(15)
-                                    if (telefono.isNotBlank()) direccionSeleccionada = null
-                                },
-                                label = { Text("Telefono") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = addressFieldColors,
-                                shape = RoundedCornerShape(18.dp),
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Phone,
-                                    imeAction = ImeAction.Next
+                        if (camposNuevaDireccionHabilitados) {
+                            item {
+                                OutlinedTextField(
+                                    value = alias,
+                                    onValueChange = { alias = it },
+                                    label = { Text("Alias") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = addressFieldColors,
+                                    shape = RoundedCornerShape(18.dp)
                                 )
-                            )
-                        }
-                        item {
-                            OutlinedTextField(
-                                value = direccion,
-                                onValueChange = {
-                                    direccion = it
-                                    if (it.isNotBlank()) direccionSeleccionada = null
-                                },
-                                label = { Text("Direccion") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = addressFieldColors,
-                                shape = RoundedCornerShape(18.dp)
-                            )
-                        }
-                        item {
-                            OutlinedTextField(
-                                value = ciudad,
-                                onValueChange = {
-                                    ciudad = it
-                                    if (it.isNotBlank()) direccionSeleccionada = null
-                                },
-                                label = { Text("Ciudad") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = addressFieldColors,
-                                shape = RoundedCornerShape(18.dp)
-                            )
-                        }
-                        item {
-                            OutlinedTextField(
-                                value = provincia,
-                                onValueChange = {
-                                    provincia = it
-                                    if (it.isNotBlank()) direccionSeleccionada = null
-                                },
-                                label = { Text("Provincia") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = addressFieldColors,
-                                shape = RoundedCornerShape(18.dp)
-                            )
-                        }
-                        item {
-                            OutlinedTextField(
-                                value = codigoPostal,
-                                onValueChange = {
-                                    codigoPostal = it.filter { ch -> ch.isDigit() }.take(5)
-                                    if (codigoPostal.isNotBlank()) direccionSeleccionada = null
-                                },
-                                label = { Text("Codigo postal") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = addressFieldColors,
-                                shape = RoundedCornerShape(18.dp),
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Number,
-                                    imeAction = ImeAction.Done
+                            }
+                            item {
+                                OutlinedTextField(
+                                    value = nombreCompleto,
+                                    onValueChange = {
+                                        nombreCompleto = it
+                                        if (it.isNotBlank()) direccionSeleccionada = null
+                                    },
+                                    label = { Text("Nombre completo") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = addressFieldColors,
+                                    shape = RoundedCornerShape(18.dp)
                                 )
-                            )
+                            }
+                            item {
+                                OutlinedTextField(
+                                    value = telefono,
+                                    onValueChange = {
+                                        telefono = it.filter { ch -> ch.isDigit() }.take(15)
+                                        if (telefono.isNotBlank()) direccionSeleccionada = null
+                                    },
+                                    label = { Text("Telefono") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = addressFieldColors,
+                                    shape = RoundedCornerShape(18.dp),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Phone,
+                                        imeAction = ImeAction.Next
+                                    )
+                                )
+                            }
+                            item {
+                                OutlinedTextField(
+                                    value = direccion,
+                                    onValueChange = {
+                                        direccion = it
+                                        if (it.isNotBlank()) direccionSeleccionada = null
+                                    },
+                                    label = { Text("Direccion") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = addressFieldColors,
+                                    shape = RoundedCornerShape(18.dp)
+                                )
+                            }
+                            item {
+                                OutlinedTextField(
+                                    value = ciudad,
+                                    onValueChange = {
+                                        ciudad = it
+                                        if (it.isNotBlank()) direccionSeleccionada = null
+                                    },
+                                    label = { Text("Ciudad") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = addressFieldColors,
+                                    shape = RoundedCornerShape(18.dp)
+                                )
+                            }
+                            item {
+                                OutlinedTextField(
+                                    value = provincia,
+                                    onValueChange = {
+                                        provincia = it
+                                        if (it.isNotBlank()) direccionSeleccionada = null
+                                    },
+                                    label = { Text("Provincia") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = addressFieldColors,
+                                    shape = RoundedCornerShape(18.dp)
+                                )
+                            }
+                            item {
+                                OutlinedTextField(
+                                    value = codigoPostal,
+                                    onValueChange = {
+                                        codigoPostal = it.filter { ch -> ch.isDigit() }.take(5)
+                                        if (codigoPostal.isNotBlank()) direccionSeleccionada = null
+                                    },
+                                    label = { Text("Codigo postal") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = addressFieldColors,
+                                    shape = RoundedCornerShape(18.dp),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done
+                                    )
+                                )
+                            }
                         }
                     }
 
@@ -385,10 +429,7 @@ fun CartScreen(vm: AppViewModel) {
                                     direccionFinal?.let {
                                         direccionPreparada = it
                                         guardarDireccionNueva = direccionSeleccionada == null
-                                        codigo3ds = ""
-                                        error3ds = null
-                                        mostrar3ds = false
-                                        referenciaPago = generatePaymentReference()
+                                        resetPaymentAttempt()
                                         step = CartStep.PAYMENT
                                     }
                                 },
@@ -963,7 +1004,7 @@ fun CartItem(item: ItemCarrito, onEliminar: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                    androidx.compose.foundation.Canvas(modifier = Modifier.size(20.dp)) {
+                    Canvas(modifier = Modifier.size(20.dp)) {
                         drawCircle(color = Purple)
                         drawCircle(color = Color.White, radius = 4.dp.toPx())
                     }

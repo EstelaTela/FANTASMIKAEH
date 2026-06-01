@@ -1,4 +1,12 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.screens
+
+import com.example.fkaeh.R
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.components.*
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -47,8 +55,27 @@ fun RegisterScreen(
     var codigoOtp by remember { mutableStateOf("") }
 
     val telefonoValido = telefono.filter { it.isDigit() }.length >= 9
+    val correoDuplicadoError = vm.registroError?.takeIf {
+        it.contains("correo", ignoreCase = true) && it.contains("cuenta", ignoreCase = true)
+    }
 
     if (vm.isLoggedIn) { LaunchedEffect(Unit) { onRegistroSuccess() } }
+
+    if (correoDuplicadoError != null) {
+        AlertDialog(
+            onDismissRequest = { vm.limpiarErrorRegistro() },
+            confirmButton = {
+                TextButton(onClick = { vm.limpiarErrorRegistro() }) {
+                    Text("Entendido", color = customPurple)
+                }
+            },
+            containerColor = AppColors.DialogContainer,
+            titleContentColor = AppColors.TextPrimary,
+            textContentColor = Color.LightGray,
+            title = { Text("Correo ya registrado") },
+            text = { Text(correoDuplicadoError) }
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(BlackBg)) {
         Image(

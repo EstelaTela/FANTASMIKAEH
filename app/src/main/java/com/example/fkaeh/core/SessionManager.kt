@@ -1,4 +1,4 @@
-package com.example.fkaeh
+package com.example.fkaeh.core
 
 import android.content.Context
 

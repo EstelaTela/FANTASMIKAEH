@@ -1,10 +1,19 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.screens
+
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.components.*
 
 import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,6 +61,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.rememberAsyncImagePainter
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.core.CategoryCatalog
+import com.example.fkaeh.ui.common.Purple
+import com.example.fkaeh.R
 import java.io.File
 import java.io.IOException
 
@@ -59,7 +72,7 @@ import java.io.IOException
 fun SellScreen(vm: AppViewModel) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val prefs = remember(context) { context.getSharedPreferences("fkaeh_app", android.content.Context.MODE_PRIVATE) }
+    val prefs = remember(context) { context.getSharedPreferences("fkaeh_app", Context.MODE_PRIVATE) }
 
     var nombre by remember { mutableStateOf("") }
     var descripcion by remember { mutableStateOf("") }
@@ -150,7 +163,7 @@ fun SellScreen(vm: AppViewModel) {
         }
         val yaSePidio = prefs.getBoolean("gallery_permission_prompted", false)
         val tienePermiso = ContextCompat.checkSelfPermission(context, permisoGaleria) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED
+            PackageManager.PERMISSION_GRANTED
 
         if (!yaSePidio && !tienePermiso) {
             permisoGaleriaLauncher.launch(permisoGaleria)
@@ -324,7 +337,7 @@ fun SellScreen(vm: AppViewModel) {
                     onClick = { abrirCamara() },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Purple),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Purple.copy(0.6f)),
+                    border = BorderStroke(1.dp, Purple.copy(0.6f)),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Icon(Icons.Outlined.CameraAlt, null, modifier = Modifier.size(16.dp))
@@ -336,7 +349,7 @@ fun SellScreen(vm: AppViewModel) {
                     onClick = { abrirGaleria() },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Purple),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Purple.copy(0.6f)),
+                    border = BorderStroke(1.dp, Purple.copy(0.6f)),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Icon(Icons.Outlined.PhotoLibrary, null, modifier = Modifier.size(16.dp))
@@ -554,7 +567,7 @@ fun SellScreen(vm: AppViewModel) {
 }
 
 private fun abrirCamaraSegura(
-    context: android.content.Context,
+    context: Context,
     onUriCreada: (Uri) -> Unit,
     onError: (String) -> Unit
 ) {

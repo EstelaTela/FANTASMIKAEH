@@ -1,4 +1,12 @@
-package com.example.fkaeh
+package com.example.fkaeh.ui.screens
+
+import com.example.fkaeh.R
+import com.example.fkaeh.AppViewModel
+import com.example.fkaeh.core.*
+import com.example.fkaeh.data.models.*
+import com.example.fkaeh.data.repository.*
+import com.example.fkaeh.ui.common.*
+import com.example.fkaeh.ui.components.*
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -12,68 +20,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-
-val WhiteFieldColors @Composable get() = TextFieldDefaults.colors(
-    focusedContainerColor     = Color.White,
-    unfocusedContainerColor   = Color.White,
-    errorContainerColor       = Color.White,
-    focusedIndicatorColor     = Color.Transparent,
-    unfocusedIndicatorColor   = Color.Transparent,
-    errorIndicatorColor       = Color.Red,
-    focusedTextColor          = Color.Black,
-    unfocusedTextColor        = Color.Black,
-    focusedPlaceholderColor   = Color.Gray,
-    unfocusedPlaceholderColor = Color.Gray,
-    cursorColor               = Color(0xFF9C27B0)
-)
-
-val DarkFieldColors @Composable get() = TextFieldDefaults.colors(
-    focusedContainerColor     = Color.White,
-    unfocusedContainerColor   = Color.White,
-    focusedIndicatorColor     = Color.Transparent,
-    unfocusedIndicatorColor   = Color.Transparent,
-    focusedTextColor          = Color.Black,
-    unfocusedTextColor        = Color.Black,
-    focusedPlaceholderColor   = Color.Gray,
-    unfocusedPlaceholderColor = Color.Gray,
-    cursorColor               = Color(0xFF9C27B0)
-)
-
-val BlackFieldColors @Composable get() = TextFieldDefaults.colors(
-    focusedContainerColor = Color(0xFF111111),
-    unfocusedContainerColor = Color(0xFF111111),
-    errorContainerColor = Color(0xFF111111),
-    focusedIndicatorColor = Color.Transparent,
-    unfocusedIndicatorColor = Color.Transparent,
-    errorIndicatorColor = Color.Red,
-    focusedTextColor = Color.White,
-    unfocusedTextColor = Color.White,
-    focusedPlaceholderColor = Color(0xFF8E8E8E),
-    unfocusedPlaceholderColor = Color(0xFF8E8E8E),
-    focusedLabelColor = Color(0xFFD0D0D0),
-    unfocusedLabelColor = Color(0xFFD0D0D0),
-    cursorColor = Purple
-)
-
-// Estilo con sombra negra para textos sobre fondo con imagen
-val shadowTextStyle = TextStyle(
-    shadow = Shadow(
-        color = Color.Black,
-        offset = Offset(1f, 1f),
-        blurRadius = 4f
-    )
-)
 
 @Composable
 fun LoginScreen(
@@ -203,6 +157,109 @@ fun LoginScreen(
             onDismiss = { showRecuperar = false }
         )
     }
+
+    if (vm.showReactivarCuentaDialog) {
+        ReactivarCuentaDialog(vm = vm)
+    }
+}
+
+@Composable
+private fun ReactivarCuentaDialog(vm: AppViewModel) {
+    var codigoEnviado by remember { mutableStateOf(false) }
+    var codigo by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
+    var cargando by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { if (!cargando) vm.cerrarDialogoReactivacion() },
+        containerColor = Color(0xFF151515),
+        titleContentColor = Color.White,
+        textContentColor = Color(0xFFD4D4D4),
+        title = {
+            Text(
+                if (codigoEnviado) "Verifica tu correo" else "Cuenta desactivada",
+                fontWeight = FontWeight.Bold
+            )
+
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    if (codigoEnviado) {
+                        "Introduce el código de 6 dígitos que te hemos enviado para activar tu cuenta de nuevo. \n"+
+                        "\nCódigo demo: 123456"
+                    } else {
+                        "¿Desea activar tu cuenta de nuevo?"
+                    },
+                    color = Color(0xFFD4D4D4),
+                    fontSize = 14.sp
+                )
+                if (codigoEnviado) {
+                    OutlinedTextField(
+                        value = codigo,
+                        onValueChange = {
+                            codigo = it.filter { ch -> ch.isDigit() }.take(6)
+                            error = ""
+                        },
+                        placeholder = { Text("Código") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = WhiteFieldColors
+                    )
+                }
+                if (error.isNotBlank()) {
+                    Text(error, color = Color(0xFFFF8A8A), fontSize = 12.sp)
+                }
+                if (cargando) {
+                    CircularProgressIndicator(color = Purple, modifier = Modifier.size(28.dp))
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    cargando = true
+                    error = ""
+                    if (!codigoEnviado) {
+                        vm.solicitarCodigoReactivacion { exito, mensaje ->
+                            cargando = false
+                            if (exito) {
+                                codigoEnviado = true
+                            } else {
+                                error = mensaje ?: "No se pudo enviar el código"
+                            }
+                        }
+                    } else {
+                        if (codigo.length != 6) {
+                            cargando = false
+                            error = "Introduce el código de 6 dígitos"
+                            return@Button
+                        }
+                        vm.reactivarCuentaConCodigo(codigo) { exito, mensaje ->
+                            cargando = false
+                            if (!exito) {
+                                error = mensaje ?: "No se pudo activar la cuenta"
+                            }
+                        }
+                    }
+                },
+                enabled = !cargando,
+                colors = ButtonDefaults.buttonColors(containerColor = Purple),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(if (codigoEnviado) "Activar" else "Sí")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = { vm.cerrarDialogoReactivacion() },
+                enabled = !cargando
+            ) {
+                Text("Cancelar", color = Color(0xFFBDBDBD))
+            }
+        }
+    )
 }
 
 // ── Diálogo recuperar contraseña ──────────────────────────────

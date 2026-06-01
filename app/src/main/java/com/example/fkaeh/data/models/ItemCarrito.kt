@@ -1,4 +1,4 @@
-package com.example.fkaeh
+package com.example.fkaeh.data.models
 
 // Data class para el carrito (puedes añadirlo en el mismo archivo que Producto)
 data class ItemCarrito(
