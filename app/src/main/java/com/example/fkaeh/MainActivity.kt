@@ -79,6 +79,9 @@ fun App() {
     var currentScreen by remember { mutableStateOf(Screen.LOGIN) }
     var currentTab by remember { mutableStateOf(Tab.HOME) }
     var productoSeleccionadoId by remember { mutableStateOf<Int?>(null) }
+    var publicProfileUserId by remember { mutableStateOf<Int?>(null) }
+    var publicProfileUserName by remember { mutableStateOf("") }
+    var publicProfilePhotoUrl by remember { mutableStateOf<String?>(null) }
 
     val notificacionesLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -108,6 +111,7 @@ fun App() {
             Screen.MAIN -> {
                 when {
                     productoSeleccionadoId != null -> productoSeleccionadoId = null
+                    publicProfileUserId != null -> publicProfileUserId = null
                     currentTab != Tab.HOME -> currentTab = Tab.HOME
                     else -> activity?.moveTaskToBack(true)
                 }
@@ -137,6 +141,7 @@ fun App() {
                     esAdmin = vm.esAdmin,
                     onChange = {
                         productoSeleccionadoId = null
+                        publicProfileUserId = null
                         currentTab = it
                     }
                 )
@@ -169,7 +174,12 @@ fun App() {
                         Tab.CHAT -> ChatScreen(
                             vm = vm,
                             onExploreHome = { currentTab = Tab.HOME },
-                            onGoToCart = { currentTab = Tab.CART }
+                            onGoToCart = { currentTab = Tab.CART },
+                            onOpenUserProfile = { userId, name, photoUrl ->
+                                publicProfileUserId = userId
+                                publicProfileUserName = name
+                                publicProfilePhotoUrl = photoUrl
+                            }
                         )
                         Tab.SEARCH -> SearchScreen(
                             vm = vm,
@@ -188,12 +198,29 @@ fun App() {
                             onLogout = {
                                 vm.logout()
                                 productoSeleccionadoId = null
+                                publicProfileUserId = null
                                 currentTab = Tab.HOME
                                 currentScreen = Screen.LOGIN
-                            }
+                            },
+                            onProductoClick = { productoSeleccionadoId = it.id }
                         )
                         Tab.ADMIN -> AdminScreen(vm = vm)
                     }
+                }
+
+                val profileUserId = publicProfileUserId
+                if (profileUserId != null && productoSeleccionado == null) {
+                    PublicProfileScreen(
+                        userId = profileUserId,
+                        userName = publicProfileUserName,
+                        photoUrl = publicProfilePhotoUrl,
+                        productos = vm.productos.filter { it.idVendedor == profileUserId },
+                        onBack = { publicProfileUserId = null },
+                        onProductoClick = {
+                            publicProfileUserId = null
+                            productoSeleccionadoId = it.id
+                        }
+                    )
                 }
             }
         }

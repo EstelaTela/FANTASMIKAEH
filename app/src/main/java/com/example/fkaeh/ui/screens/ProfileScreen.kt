@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -32,6 +33,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -179,7 +183,8 @@ fun LegalTermsContent(modifier: Modifier = Modifier) {
 fun ProfileScreen(
     vm: AppViewModel,
     onRequestNotificationPermission: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onProductoClick: (Producto) -> Unit = {}
 ) {
     val user = vm.currentUser
     var openSection by remember { mutableStateOf<String?>(null) }
@@ -244,6 +249,15 @@ fun ProfileScreen(
             }
 
             ProfileMenuItem(
+                icon = Icons.Outlined.ShoppingBag,
+                title = "Mis productos subidos",
+                expanded = openSection == "subidos",
+                onClick = { openSection = openSection.toggle("subidos") }
+            ) {
+                MisProductosSubidosContent(vm, onProductoClick)
+            }
+
+            ProfileMenuItem(
                 icon = Icons.Outlined.FavoriteBorder,
                 title = "Artículos Favoritos",
                 expanded = openSection == "favoritos",
@@ -284,14 +298,6 @@ fun ProfileScreen(
                 ConfiguracionContent(vm, user, onRequestNotificationPermission, onLogout)
             }
 
-            ProfileMenuItem(
-                icon = Icons.Outlined.Email,
-                title = "Newsletter",
-                expanded = openSection == "newsletter",
-                onClick = { openSection = openSection.toggle("newsletter") }
-            ) {
-                PlaceholderContent("Próximamente podrás gestionar tu suscripción")
-            }
 
             ProfileMenuItem(
                 icon = Icons.Outlined.Email,
@@ -719,6 +725,98 @@ private fun FavoritosContent(vm: AppViewModel) {
                 IconButton(onClick = { vm.toggleFavorito(producto) }) {
                     Icon(Icons.Outlined.Delete, contentDescription = null, tint = customPurple)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MisProductosSubidosContent(vm: AppViewModel, onProductoClick: (Producto) -> Unit) {
+    val context = LocalContext.current
+    val userId = vm.currentUser?.id_usuario
+    val productosSubidos = remember(vm.productos, userId) {
+        vm.productos.filter { it.idVendedor == userId }
+    }
+
+    if (productosSubidos.isEmpty()) {
+        PlaceholderContent("Todavía no has subido productos")
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        productosSubidos.forEach { producto ->
+            val fotoUrl = remember(producto.fotoUrls, producto.fotoUrl) {
+                producto.fotoUrls.firstOrNull()?.let {
+                    if (it.startsWith("http")) it else ApiClient.getBaseUrl(context) + it
+                } ?: producto.fotoUrl?.let {
+                    if (it.startsWith("http")) it else ApiClient.getBaseUrl(context) + it
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF171717))
+                    .clickable { onProductoClick(producto) }
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(58.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF242424)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (fotoUrl != null) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(fotoUrl)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = producto.nombre,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text(
+                            text = producto.nombre.take(1).uppercase(),
+                            color = customPurple,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = producto.nombre,
+                        color = ProfileText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (producto.estadoPrenda.isNotBlank()) {
+                        Text(
+                            text = producto.estadoPrenda,
+                            color = ProfileMuted,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Text(
+                        text = "%.2f€".format(producto.precio),
+                        color = customPurple,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = ProfileMuted)
             }
         }
     }

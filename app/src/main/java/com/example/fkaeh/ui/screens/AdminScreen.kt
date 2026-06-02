@@ -152,8 +152,8 @@ fun AdminScreen(vm: AppViewModel) {
             },
             onConfirmar = {
                 when (accionParaConfirmar) {
-                    ProductAdminAction.CENSOR -> vm.censurarProductoComoAdmin(producto)
-                    ProductAdminAction.DELETE -> vm.eliminarProductoComoAdmin(producto)
+                    ProductAdminAction.CENSOR -> vm.censurarProductoComoAdmin(productoParaConfirmar)
+                    ProductAdminAction.DELETE -> vm.eliminarProductoComoAdmin(productoParaConfirmar)
                 }
                 productoAccion = null
                 accionProducto = null
