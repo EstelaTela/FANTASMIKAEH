@@ -5,6 +5,7 @@ data class UsuarioBD(
     val nombre: String,
     val correo: String,
     val telefono: String = "",
+    val fotoPerfilUrl: String? = null,
     val activo: Boolean? = null,
     val id_rol: Int,
     val nombre_rol: String? = null

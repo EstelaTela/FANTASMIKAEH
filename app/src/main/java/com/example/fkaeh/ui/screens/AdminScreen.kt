@@ -140,20 +140,20 @@ fun AdminScreen(vm: AppViewModel) {
         )
     }
 
-    if (productoAccion != null && accionProducto != null) {
+    val productoParaConfirmar = productoAccion
+    val accionParaConfirmar = accionProducto
+    if (productoParaConfirmar != null && accionParaConfirmar != null) {
         ConfirmarAccionProductoDialog(
-            producto = productoAccion!!,
-            accion = accionProducto!!,
+            producto = productoParaConfirmar,
+            accion = accionParaConfirmar,
             onDismiss = {
                 productoAccion = null
                 accionProducto = null
             },
             onConfirmar = {
-                val producto = productoAccion ?: return@ConfirmarAccionProductoDialog
-                when (accionProducto) {
+                when (accionParaConfirmar) {
                     ProductAdminAction.CENSOR -> vm.censurarProductoComoAdmin(producto)
                     ProductAdminAction.DELETE -> vm.eliminarProductoComoAdmin(producto)
-                    null -> Unit
                 }
                 productoAccion = null
                 accionProducto = null

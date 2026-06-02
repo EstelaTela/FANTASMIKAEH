@@ -68,6 +68,7 @@ import kotlinx.coroutines.delay
 private data class OfferConversationUi(
     val thread: OfferThread,
     val counterpartName: String,
+    val counterpartPhotoUrl: String?,
     val isSellerView: Boolean
 )
 
@@ -82,6 +83,7 @@ fun ChatScreen(
         OfferConversationUi(
             thread = thread,
             counterpartName = if (thread.sellerId == currentUserId) thread.buyerName else thread.sellerName,
+            counterpartPhotoUrl = thread.counterpartPhotoUrl(currentUserId),
             isSellerView = thread.sellerId == currentUserId
         )
     }
@@ -216,7 +218,7 @@ private fun OfferInboxRow(conversation: OfferConversationUi, onClick: () -> Unit
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AvatarBadge(label = conversation.counterpartName, size = 58.dp)
+        AvatarBadge(label = conversation.counterpartName, photoUrl = conversation.counterpartPhotoUrl, size = 58.dp)
         Spacer(Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -266,7 +268,7 @@ private fun OfferThreadScreen(
     val latestOffer = thread.latestOffer()
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
-            painter = painterResource(id = R.drawable.carrito),
+            painter = painterResource(id = R.drawable.subirproducto),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.FillBounds
@@ -281,6 +283,7 @@ private fun OfferThreadScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             OfferHeader(
                 counterpartName = if (isSellerView) thread.buyerName else thread.sellerName,
+                counterpartPhotoUrl = thread.counterpartPhotoUrl(vm.currentUser?.id_usuario),
                 subtitle = thread.productName,
                 onBack = onBack
             )
@@ -332,36 +335,43 @@ private fun OfferThreadScreen(
 @Composable
 private fun OfferHeader(
     counterpartName: String,
+    counterpartPhotoUrl: String?,
     subtitle: String,
     onBack: () -> Unit
 ) {
-    Row(
+    Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 10.dp, end = 14.dp, top = 10.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Volver",
-                tint = Color.White
-            )
-        }
-        AvatarBadge(label = counterpartName, size = 48.dp)
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = counterpartName,
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = subtitle,
-                color = Color.White.copy(alpha = 0.70f),
-                fontSize = 12.sp
-            )
+            .fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.Black),
+    ){
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Volver",
+                    tint = Color.White
+                )
+            }
+            AvatarBadge(label = counterpartName, photoUrl = counterpartPhotoUrl, size = 48.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = counterpartName,
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = subtitle,
+                    color = Color.White.copy(alpha = 0.70f),
+                    fontSize = 12.sp
+                )
+            }
         }
     }
 }
@@ -372,7 +382,7 @@ private fun OfferProductCard(thread: OfferThread, latestOffer: OfferEntry?) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF161616)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF161616).copy(alpha = 0.4f)),
         shape = RoundedCornerShape(24.dp)
     ) {
         Row(
@@ -662,7 +672,8 @@ private fun ProductThumb(product: Producto) {
 }
 
 @Composable
-private fun AvatarBadge(label: String, size: Dp) {
+private fun AvatarBadge(label: String, photoUrl: String? = null, size: Dp) {
+    val context = LocalContext.current
     Box(
         modifier = Modifier
             .size(size)
@@ -671,12 +682,24 @@ private fun AvatarBadge(label: String, size: Dp) {
             .border(1.dp, customPurple.copy(alpha = 0.40f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = buildInitials(label),
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = if (size > 50.dp) 20.sp else 16.sp
-        )
+        if (!photoUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(photoUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = label,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(
+                text = buildInitials(label),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = if (size > 50.dp) 20.sp else 16.sp
+            )
+        }
     }
 }
 

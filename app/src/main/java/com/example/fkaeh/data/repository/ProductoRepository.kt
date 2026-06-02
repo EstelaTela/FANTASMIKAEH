@@ -113,6 +113,15 @@ class ProductoRepository(private val context: Context) {
         return ApiClient.getArray(context, endpoint).length() > 0
     }
 
+    private fun authErrorMessage(responseText: String): String {
+        return runCatching {
+            val json = JSONObject(responseText)
+            listOf("msg", "message", "error_description", "error")
+                .firstNotNullOfOrNull { key -> json.optString(key).takeIf { it.isNotBlank() } }
+                .orEmpty()
+        }.getOrDefault(responseText.take(180))
+    }
+
     // 🔧 REEMPLAZA ESTE MÉTODO en ProductoRepository.kt
 
     suspend fun registrarUsuario(
@@ -157,11 +166,16 @@ class ProductoRepository(private val context: Context) {
             conn.disconnect()
 
             if (code !in 200..299) {
-                val msg = runCatching { JSONObject(responseText).optString("msg", "") }.getOrDefault("")
+                val msg = authErrorMessage(responseText)
                 return@withContext Result.failure(
                     Exception(
-                        if (msg.contains("already registered", true)) "Correo ya registrado"
-                        else "Error al registrar: $code"
+                        when {
+                            msg.contains("already registered", true) ||
+                                    msg.contains("already been registered", true) ||
+                                    msg.contains("user already", true) -> "Correo ya registrado"
+                            msg.isNotBlank() -> msg
+                            else -> "Error al registrar: $code"
+                        }
                     )
                 )
             }
@@ -173,23 +187,6 @@ class ProductoRepository(private val context: Context) {
                 ?: signupJson?.optJSONArray("identities")
             if (identities != null && identities.length() == 0) {
                 return@withContext Result.failure(Exception("Correo ya registrado"))
-            }
-
-            val userBody = JSONObject().apply {
-                put("nombre", nombre)
-                put("correo", correoNormalizado)
-                put("telefono", telefono)
-                put("id_rol", 2)
-            }
-            val array = ApiClient.postArray(context, "/rest/v1/usuarios", userBody)
-
-            val maybeError = array.optJSONObject(0)
-            if (maybeError != null && (maybeError.has("code") || maybeError.has("message"))) {
-                val msg = maybeError.optString("message", "")
-                if (msg.contains("unique", true) || msg.contains("duplicate", true)) {
-                    return@withContext Result.failure(Exception("Correo ya registrado"))
-                }
-                return@withContext Result.failure(Exception(msg))
             }
 
             Result.success(Unit)
@@ -309,16 +306,20 @@ class ProductoRepository(private val context: Context) {
                     ?: return@withContext Result.failure(Exception("No se pudo leer la foto"))
 
                 val mimeType = context.contentResolver.getType(photoUri)?.takeIf { it.isNotBlank() } ?: "image/jpeg"
-                val objectPath = profilePhotoObjectPath(userId)
-                val updateResponse = uploadProfilePhotoBytes(objectPath, photoBytes, mimeType, method = "PUT")
-                val finalResponse = if (updateResponse.first in 200..299) {
-                    updateResponse
-                } else {
-                    uploadProfilePhotoBytes(objectPath, photoBytes, mimeType, method = "POST")
-                }
+                val extension = MimeTypeMap.getSingleton()
+                    .getExtensionFromMimeType(mimeType)
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "jpg"
+                val objectPath = profilePhotoObjectPath(userId, extension)
+                val finalResponse = uploadProfilePhotoBytes(objectPath, photoBytes, mimeType)
 
                 if (finalResponse.first in 200..299) {
-                    Result.success(cacheBustedProfilePhotoUrl(userId))
+                    val publicUrl = profilePhotoPublicUrl(objectPath)
+                    guardarProfilePhotoUrl(userId, publicUrl)
+                        .fold(
+                            onSuccess = { Result.success(publicUrl) },
+                            onFailure = { Result.failure(it) }
+                        )
                 } else {
                     Result.failure(Exception("Error al subir foto de perfil: ${finalResponse.first} ${finalResponse.second.take(180)}".trim()))
                 }
@@ -329,10 +330,10 @@ class ProductoRepository(private val context: Context) {
     }
 
     suspend fun resolveProfilePhotoUrl(userId: Int): String? = withContext(Dispatchers.IO) {
-        val publicUrl = profilePhotoPublicUrl(userId)
         runCatching {
-            if (remoteFileExists(publicUrl)) cacheBustedProfilePhotoUrl(userId) else null
-        }.getOrNull()
+            val array = ApiClient.getArray(context, "/rest/v1/usuarios?id_usuario=eq.$userId&select=foto_perfil_url&limit=1")
+            array.optJSONObject(0)?.optString("foto_perfil_url")?.takeIf { it.isNotBlank() }
+        }.getOrNull() ?: legacyProfilePhotoUrl(userId).takeIf { remoteFileExists(it) }
     }
 
     suspend fun agregarFavorito(idUsuario: Int, idProducto: Int): Result<Unit> {
@@ -673,6 +674,7 @@ class ProductoRepository(private val context: Context) {
                 put("nombre", usuario.nombre)
                 put("correo", usuario.correo)
                 put("telefono", usuario.telefono)
+                usuario.fotoPerfilUrl?.let { put("foto_perfil_url", it) }
                 // NO actualizar contraseña aquí
             }
             val code = ApiClient.patch(context, "/rest/v1/usuarios?id_usuario=eq.${usuario.id_usuario}", body)
@@ -769,7 +771,19 @@ class ProductoRepository(private val context: Context) {
                     add(parseOfferThread(array.getJSONObject(i)))
                 }
             }
-            Result.success(threads.sortedByDescending { it.latestOffer()?.createdAt ?: 0L })
+            val photoUrls = fetchProfilePhotoUrlsByUserId(
+                threads.flatMap { listOf(it.sellerId, it.buyerId) }.distinct()
+            )
+            Result.success(
+                threads
+                    .map {
+                        it.copy(
+                            sellerPhotoUrl = photoUrls[it.sellerId] ?: it.sellerPhotoUrl,
+                            buyerPhotoUrl = photoUrls[it.buyerId] ?: it.buyerPhotoUrl
+                        )
+                    }
+                    .sortedByDescending { it.latestOffer()?.createdAt ?: 0L }
+            )
         } catch (_: Exception) {
             Result.failure(Exception("No se pudieron cargar las ofertas"))
         }
@@ -795,6 +809,7 @@ class ProductoRepository(private val context: Context) {
                 put("foto_url", producto.fotoUrl)
                 put("id_comprador", comprador.id_usuario)
                 put("nombre_comprador", comprador.nombre)
+                comprador.fotoPerfilUrl?.let { put("foto_comprador_url", it) }
                 put("id_vendedor", producto.idVendedor)
                 put("nombre_vendedor", producto.nombreVendedor)
                 put("created_at", System.currentTimeMillis())
@@ -856,7 +871,7 @@ class ProductoRepository(private val context: Context) {
         }
     }
 
-    suspend fun verificarOtp(correo: String, codigo: String): Result<UsuarioBD> =
+    suspend fun verificarOtp(correo: String, codigo: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             return@withContext try {
                 val tipos = listOf("email", "signup")
@@ -888,16 +903,7 @@ class ProductoRepository(private val context: Context) {
                     android.util.Log.e("OTP_DEBUG", "tipo='$tipo' -> HTTP $code | Body: $responseText")
 
                     if (code in 200..299) {
-                        val correoEnc = URLEncoder.encode(correo, "UTF-8")
-                        val array = ApiClient.getArray(
-                            context,
-                            "/rest/v1/usuarios?correo=eq.$correoEnc&select=*,roles(nombre_rol)&limit=1"
-                        )
-                        return@withContext if (array.length() == 0) {
-                            Result.failure(Exception("Usuario no encontrado tras verificar"))
-                        } else {
-                            Result.success(parseUsuario(array.getJSONObject(0)))
-                        }
+                        return@withContext Result.success(Unit)
                     }
                 }
 
@@ -907,6 +913,43 @@ class ProductoRepository(private val context: Context) {
                 Result.failure(Exception("Código incorrecto o expirado"))
             }
         }
+
+
+    suspend fun crearUsuarioVerificado(
+        nombre: String,
+        correo: String,
+        telefono: String
+    ): Result<UsuarioBD> = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val correoNormalizado = correo.trim().lowercase()
+            val correoEnc = URLEncoder.encode(correoNormalizado, "UTF-8")
+            val existente = ApiClient.getArray(
+                context,
+                "/rest/v1/usuarios?correo=eq.$correoEnc&select=*,roles(nombre_rol)&limit=1"
+            )
+            if (existente.length() > 0) {
+                return@withContext Result.success(parseUsuario(existente.getJSONObject(0)))
+            }
+
+            val userBody = JSONObject().apply {
+                put("nombre", nombre)
+                put("correo", correoNormalizado)
+                put("telefono", telefono)
+                put("id_rol", 2)
+            }
+            val array = ApiClient.postArray(context, "/rest/v1/usuarios", userBody)
+            val first = array.optJSONObject(0)
+            if (first == null) {
+                Result.failure(Exception("No se pudo crear el usuario"))
+            } else if (first.has("code") || first.has("message")) {
+                Result.failure(Exception(first.optString("message", "No se pudo crear el usuario")))
+            } else {
+                Result.success(parseUsuario(first))
+            }
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo crear el usuario verificado"))
+        }
+    }
 
 
     private suspend fun getIds(endpoint: String, field: String): List<Int> {
@@ -922,6 +965,31 @@ class ProductoRepository(private val context: Context) {
         }
     }
 
+    private suspend fun fetchProfilePhotoUrlsByUserId(userIds: List<Int>): Map<Int, String> {
+        val ids = userIds.filter { it > 0 }.distinct()
+        if (ids.isEmpty()) return emptyMap()
+        return try {
+            val array = ApiClient.getArray(
+                context,
+                "/rest/v1/usuarios?id_usuario=in.(${ids.joinToString(",")})&select=id_usuario,foto_perfil_url"
+            )
+            val remoteUrls = buildMap {
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    val url = item.optString("foto_perfil_url").takeIf { it.isNotBlank() } ?: continue
+                    put(item.optInt("id_usuario"), url)
+                }
+            }
+            ids.associateWith { userId ->
+                remoteUrls[userId] ?: legacyProfilePhotoUrl(userId).takeIf { remoteFileExists(it) }.orEmpty()
+            }.filterValues { it.isNotBlank() }
+        } catch (_: Exception) {
+            ids.associateWith { userId ->
+                legacyProfilePhotoUrl(userId).takeIf { remoteFileExists(it) }.orEmpty()
+            }.filterValues { it.isNotBlank() }
+        }
+    }
+
     private suspend fun subirFotos(idProducto: Int, fotoUris: List<Uri>): Result<List<String>> {
         val urls = mutableListOf<String>()
         fotoUris.forEachIndexed { index, uri ->
@@ -934,17 +1002,17 @@ class ProductoRepository(private val context: Context) {
         return Result.success(urls)
     }
 
-    private fun profilePhotoObjectPath(userId: Int): String = "profiles/profile_$userId"
+    private fun profilePhotoObjectPath(userId: Int, extension: String): String =
+        "profiles/profile_${userId}_${System.currentTimeMillis()}.$extension"
 
     private fun uploadProfilePhotoBytes(
         objectPath: String,
         photoBytes: ByteArray,
-        mimeType: String,
-        method: String
+        mimeType: String
     ): Pair<Int, String> {
         val bucketUrl = "${ApiClient.getBaseUrl(context)}/storage/v1/object/fotos-productos/$objectPath"
         val conn = (URL(bucketUrl).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
+            requestMethod = "POST"
             doOutput = true
             connectTimeout = 30_000
             readTimeout = 30_000
@@ -965,11 +1033,22 @@ class ProductoRepository(private val context: Context) {
         return code to text
     }
 
-    private fun profilePhotoPublicUrl(userId: Int): String =
-        "${ApiClient.getBaseUrl(context)}/storage/v1/object/public/fotos-productos/${profilePhotoObjectPath(userId)}"
+    private fun profilePhotoPublicUrl(objectPath: String): String =
+        "${ApiClient.getBaseUrl(context)}/storage/v1/object/public/fotos-productos/$objectPath"
 
-    private fun cacheBustedProfilePhotoUrl(userId: Int): String =
-        "${profilePhotoPublicUrl(userId)}?t=${System.currentTimeMillis()}"
+    private fun legacyProfilePhotoUrl(userId: Int): String =
+        "${ApiClient.getBaseUrl(context)}/storage/v1/object/public/fotos-productos/profiles/profile_$userId"
+
+    private suspend fun guardarProfilePhotoUrl(userId: Int, publicUrl: String): Result<Unit> {
+        return try {
+            val body = JSONObject().apply { put("foto_perfil_url", publicUrl) }
+            val code = ApiClient.patch(context, "/rest/v1/usuarios?id_usuario=eq.$userId", body)
+            if (code in 200..299) Result.success(Unit)
+            else Result.failure(Exception("No se pudo guardar la foto de perfil en el usuario"))
+        } catch (_: Exception) {
+            Result.failure(Exception("No se pudo guardar la foto de perfil en el usuario"))
+        }
+    }
 
     private fun remoteFileExists(url: String): Boolean {
         val methods = listOf("HEAD", "GET")
@@ -1021,8 +1100,10 @@ class ProductoRepository(private val context: Context) {
             productPhotoUrl = json.optString("foto_url").takeIf { it.isNotBlank() },
             sellerId = json.optInt("id_vendedor"),
             sellerName = json.optString("nombre_vendedor"),
+            sellerPhotoUrl = json.optString("foto_vendedor_url").takeIf { it.isNotBlank() },
             buyerId = json.optInt("id_comprador"),
             buyerName = json.optString("nombre_comprador"),
+            buyerPhotoUrl = json.optString("foto_comprador_url").takeIf { it.isNotBlank() },
             offers = offers
         )
     }
@@ -1091,6 +1172,7 @@ class ProductoRepository(private val context: Context) {
             nombre = json.optString("nombre"),
             correo = json.optString("correo"),
             telefono = json.optString("telefono"),
+            fotoPerfilUrl = json.optString("foto_perfil_url").takeIf { it.isNotBlank() },
             activo = if (json.has("activo") && !json.isNull("activo")) json.optBoolean("activo") else null,
             id_rol = json.optInt("id_rol", 2),
             nombre_rol = rol?.optString("nombre_rol") ?: ""

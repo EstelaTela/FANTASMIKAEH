@@ -87,6 +87,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     private var emailTemporal = ""
+    private var nombreTemporal = ""
+    private var telefonoTemporal = ""
     private var reactivarEmailTemporal = ""
     private var reactivarPasswordTemporal = ""
 
@@ -195,7 +197,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 .onSuccess {
                     isLoggedIn = true
                     currentUser = it
-                    profilePhotoPath = resolveProfilePhotoPath(it.id_usuario)
+                    profilePhotoPath = it.fotoPerfilUrl ?: resolveProfilePhotoPath(it.id_usuario)
                     cargarHistorial()
                     cargarDirecciones()
                     cargarProductosDesdeBD()
@@ -285,17 +287,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             isLoading = true
             registroError = null
             emailTemporal = correoNormalizado
+            nombreTemporal = nombre
+            telefonoTemporal = telefonoNormalizado
+            isLoggedIn = false
 
-            productoRepository.registrarUsuario(nombre, correoNormalizado, contrasena, telefonoNormalizado)
+            productoRepository.registrarUsuario(
+                nombre,
+                correoNormalizado,
+                contrasena,
+                telefonoNormalizado
+            )
                 .onSuccess {
                     showOtpInput = true
+                    isLoggedIn = false
                 }
                 .onFailure {
-                    registroError = if (it.message?.contains("registrado", ignoreCase = true) == true) {
+                    val message = it.message.orEmpty()
+                    registroError = if (message.contains("registrado", ignoreCase = true)) {
                         "Este correo ya tiene una cuenta"
                     } else {
-                        "Error de conexión al servidor"
+                        message.ifBlank { "Error de conexión al servidor" }
                     }
+                    showOtpInput = false
+                    isLoggedIn = false
                 }
             isLoading = false
         }
@@ -310,19 +324,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             isLoading = true
             registroError = null
             productoRepository.verificarOtp(emailTemporal, codigo)
-                .onSuccess { usuarioVerificado ->
-                    isLoggedIn = true
-                    currentUser = usuarioVerificado
-                    showOtpInput = false
-                    profilePhotoPath = resolveProfilePhotoPath(usuarioVerificado.id_usuario)
-                    cargarHistorial()
-                    cargarDirecciones()
-                    cargarProductosDesdeBD()
-                    cargarFavoritos()
-                    cargarOfferThreads()
+                .onSuccess {
+                    productoRepository.crearUsuarioVerificado(nombreTemporal, emailTemporal, telefonoTemporal)
+                        .onSuccess { usuarioVerificado ->
+                            isLoggedIn = true
+                            currentUser = usuarioVerificado
+                            showOtpInput = false
+                            emailTemporal = ""
+                            nombreTemporal = ""
+                            telefonoTemporal = ""
+                            profilePhotoPath = usuarioVerificado.fotoPerfilUrl ?: resolveProfilePhotoPath(usuarioVerificado.id_usuario)
+                            cargarHistorial()
+                            cargarDirecciones()
+                            cargarProductosDesdeBD()
+                            cargarFavoritos()
+                            cargarOfferThreads()
+                        }
+                        .onFailure {
+                            registroError = it.message ?: "No se pudo crear la cuenta verificada"
+                            isLoggedIn = false
+                            showOtpInput = true
+                        }
                 }
                 .onFailure {
                     registroError = "Código incorrecto o expirado"
+                    isLoggedIn = false
+                    showOtpInput = true
                 }
             isLoading = false
         }
@@ -331,6 +358,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun cancelarOtp() {
         showOtpInput = false
         emailTemporal = ""
+        nombreTemporal = ""
+        telefonoTemporal = ""
         registroError = null
     }
 
@@ -356,6 +385,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         uiMessage = null
         showOtpInput = false
         emailTemporal = ""
+        nombreTemporal = ""
+        telefonoTemporal = ""
     }
 
     fun cargarOfferThreads(showErrors: Boolean = true) {
@@ -561,11 +592,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             productoRepository.uploadProfilePhoto(userId, uri)
                 .onSuccess { savedPath ->
                     profilePhotoPath = savedPath
+                    currentUser = currentUser?.copy(fotoPerfilUrl = savedPath)
                     prefs.edit().putString(profilePhotoKey(userId), savedPath).apply()
                     uiMessage = "Foto de perfil actualizada"
                 }
                 .onFailure {
-                    uiMessage = "No se pudo actualizar la foto de perfil"
+                    uiMessage = it.message ?: "No se pudo actualizar la foto de perfil"
                 }
         }
     }

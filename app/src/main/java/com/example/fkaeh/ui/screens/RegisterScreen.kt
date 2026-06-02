@@ -1,5 +1,6 @@
 package com.example.fkaeh.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import com.example.fkaeh.R
 import com.example.fkaeh.AppViewModel
 import com.example.fkaeh.core.*
@@ -59,7 +60,7 @@ fun RegisterScreen(
         it.contains("correo", ignoreCase = true) && it.contains("cuenta", ignoreCase = true)
     }
 
-    if (vm.isLoggedIn) { LaunchedEffect(Unit) { onRegistroSuccess() } }
+    if (vm.isLoggedIn&& !vm.showOtpInput) { LaunchedEffect(Unit) { onRegistroSuccess() } }
 
     if (correoDuplicadoError != null) {
         AlertDialog(
@@ -99,7 +100,11 @@ fun RegisterScreen(
                 .padding(top = 120.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 28.dp))
+            Spacer(
+                Modifier.height(
+                    WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 28.dp
+                )
+            )
 
             if (!vm.showOtpInput) {
                 // ── FORMULARIO DE REGISTRO ──
@@ -108,7 +113,13 @@ fun RegisterScreen(
                     value = nombre,
                     onValueChange = { nombre = it; vm.limpiarErrorRegistro() },
                     placeholder = { Text("Nombre") },
-                    leadingIcon = { Icon(Icons.Outlined.AccountCircle, null, modifier = Modifier.size(18.dp)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Outlined.AccountCircle,
+                            null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(50.dp),
                     colors = DarkFieldColors,
@@ -121,7 +132,13 @@ fun RegisterScreen(
                     value = correo,
                     onValueChange = { correo = it; vm.limpiarErrorRegistro() },
                     placeholder = { Text("Email") },
-                    leadingIcon = { Icon(Icons.Outlined.Email, null, modifier = Modifier.size(18.dp)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Outlined.Email,
+                            null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(50.dp),
                     colors = DarkFieldColors,
@@ -137,7 +154,13 @@ fun RegisterScreen(
                         vm.limpiarErrorRegistro()
                     },
                     placeholder = { Text("Número de teléfono") },
-                    leadingIcon = { Icon(Icons.Outlined.Phone, null, modifier = Modifier.size(18.dp)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Outlined.Phone,
+                            null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(50.dp),
                     colors = DarkFieldColors,
@@ -155,7 +178,13 @@ fun RegisterScreen(
                     value = contrasena,
                     onValueChange = { contrasena = it; vm.limpiarErrorRegistro() },
                     placeholder = { Text("Contraseña") },
-                    leadingIcon = { Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(18.dp)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Outlined.Lock,
+                            null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
                     trailingIcon = {
                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
                             Icon(
@@ -179,7 +208,13 @@ fun RegisterScreen(
                     value = confirmarContrasena,
                     onValueChange = { confirmarContrasena = it; vm.limpiarErrorRegistro() },
                     placeholder = { Text("Confirmar contraseña") },
-                    leadingIcon = { Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(18.dp)) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Outlined.Lock,
+                            null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
                     trailingIcon = {
                         IconButton(onClick = { confirmVisible = !confirmVisible }) {
                             Icon(
@@ -216,16 +251,41 @@ fun RegisterScreen(
                     Checkbox(
                         checked = aceptaTerminos,
                         onCheckedChange = { aceptaTerminos = it },
-                        colors = CheckboxDefaults.colors(checkedColor = customPurple, uncheckedColor = Color.White),
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = customPurple,
+                            uncheckedColor = Color.White
+                        ),
                         modifier = Modifier.size(20.dp).padding(top = 2.dp)
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
                         buildAnnotatedString {
-                            withStyle(SpanStyle(color = Color.White, fontSize = 11.sp)) { append("He leído y acepto los ") }
-                            withStyle(SpanStyle(color = Color.White, fontSize = 11.sp, textDecoration = TextDecoration.Underline)) { append("Condiciones de uso y compra") }
-                            withStyle(SpanStyle(color = Color.White, fontSize = 11.sp)) { append(" y el tratamiento de mis datos personales explicado en la ") }
-                            withStyle(SpanStyle(color = Color.White, fontSize = 11.sp, textDecoration = TextDecoration.Underline)) { append("Política de Privacidad.") }
+                            withStyle(
+                                SpanStyle(
+                                    color = Color.White,
+                                    fontSize = 11.sp
+                                )
+                            ) { append("He leído y acepto los ") }
+                            withStyle(
+                                SpanStyle(
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    textDecoration = TextDecoration.Underline
+                                )
+                            ) { append("Condiciones de uso y compra") }
+                            withStyle(
+                                SpanStyle(
+                                    color = Color.White,
+                                    fontSize = 11.sp
+                                )
+                            ) { append(" y el tratamiento de mis datos personales explicado en la ") }
+                            withStyle(
+                                SpanStyle(
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    textDecoration = TextDecoration.Underline
+                                )
+                            ) { append("Política de Privacidad.") }
                         },
                         lineHeight = 15.sp,
                         style = shadowTextStyle
@@ -256,7 +316,12 @@ fun RegisterScreen(
                             contrasena == confirmarContrasena &&
                             aceptaTerminos
                 ) {
-                    Text("Regístrate", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                    Text(
+                        "Regístrate",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
                 }
 
                 Spacer(Modifier.height(14.dp))
@@ -269,7 +334,21 @@ fun RegisterScreen(
                 )
 
             } else {
-                // ── PANTALLA OTP ──
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(460.dp)
+                        .padding(6.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.6f)),
+                    border = BorderStroke(1.dp, Color(0xFF333333))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
 
                 Spacer(Modifier.height(40.dp))
 
@@ -291,7 +370,6 @@ fun RegisterScreen(
 
                 Spacer(Modifier.height(32.dp))
 
-                // ✅ CAMPO OTP NUEVO Y FUNCIONAL
                 TextField(
                     value = codigoOtp,
                     onValueChange = { nuevoValor ->
@@ -385,5 +463,8 @@ fun RegisterScreen(
 
             Spacer(Modifier.height(36.dp))
         }
+            }
+        }
+
     }
 }

@@ -28,8 +28,10 @@ data class OfferThread(
     val productPhotoUrl: String? = null,
     val sellerId: Int,
     val sellerName: String,
+    val sellerPhotoUrl: String? = null,
     val buyerId: Int,
     val buyerName: String,
+    val buyerPhotoUrl: String? = null,
     val offers: List<OfferEntry> = emptyList()
 ) {
     fun latestOffer(): OfferEntry? = offers.maxByOrNull { it.createdAt }
@@ -43,5 +45,9 @@ data class OfferThread(
             fotoUrl = productPhotoUrl,
             nombreVendedor = sellerName
         )
+    }
+
+    fun counterpartPhotoUrl(currentUserId: Int?): String? {
+        return if (sellerId == currentUserId) buyerPhotoUrl else sellerPhotoUrl
     }
 }

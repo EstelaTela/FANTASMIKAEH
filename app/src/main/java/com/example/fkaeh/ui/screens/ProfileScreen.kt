@@ -100,6 +100,82 @@ private val ProfileMuted = AppColors.TextMuted
 private val DialogContainer = AppColors.DialogContainer
 
 @Composable
+fun LegalTermsContent(modifier: Modifier = Modifier) {
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(scrollState)
+    ) {
+        // TÍTULO PRINCIPAL
+        Text(
+            text = "FKAEH · Términos, privacidad y uso de la plataforma",
+            style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // SECCIÓN 1: TÉRMINOS Y CONDICIONES
+        Text(
+            text = "1. Términos y Condiciones de Uso",
+            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = customPurple
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "• Objeto del servicio: FANTASMIKAEH provee el espacio tecnológico para que los usuarios publiquen artículos, se comuniquen y realicen transacciones. La plataforma actúa únicamente como intermediario y no es propietaria de los artículos ni parte del contrato de compraventa entre los usuarios.\n" +
+                    "\n• Registro y Cuentas: Para utilizar los servicios, el usuario debe ser mayor de 18 años y proporcionar información veraz. Cada usuario es responsable de mantener la seguridad de su contraseña.\n" +
+                    "\n• Pagos y Envíos: Los pagos se gestionan mediante un sistema seguro de retención. El dinero se libera al vendedor una vez el comprador confirma la correcta recepción del paquete. FANTASMIKAEH establece los métodos de envío disponibles en la app.\n" +
+                    "\n• Protección al Comprador: El comprador tiene 48 horas desde la recepción para reclamar si el artículo no coincide con la descripción. No se admiten devoluciones por desistimiento entre particulares salvo acuerdo con el vendedor.\n" +
+                    "\n• Limitación de Responsabilidad: FANTASMIKAEH no se responsabiliza de la calidad de los artículos, posibles disputas entre usuarios o incidencias durante el transporte de las empresas colaboradoras.",
+            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+            color = Color.White
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // SECCIÓN 2: PRIVACIDAD
+        Text(
+            text = "2. Política de Privacidad (RGPD)",
+            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = customPurple
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "• Datos que recopilamos: Recabamos datos directos (nombre, email, dirección, datos de pago) y datos indirectos de uso dentro de la app para asegurar el correcto funcionamiento del servicio.\n" +
+                    "\n• Finalidad del tratamiento: Utilizamos la información exclusivamente para gestionar tu cuenta, procesar pagos, facilitar los envíos y prevenir fraudes en la plataforma.\n" +
+                    "\n• Destinatarios: Los datos estrictamente necesarios serán compartidos con las empresas de transporte integradas y pasarelas de pago asociadas para poder completar tus transacciones.\n" +
+                    "\n• Derechos del usuario: Puedes ejercer en cualquier momento tus derechos de acceso, rectificación, supresión (borrado de cuenta) y oposición desde los ajustes de la aplicación.",
+            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+            color = Color.White
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // SECCIÓN 3: NORMAS DE USO
+        Text(
+            text = "3. Normas de la Comunidad",
+            style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = customPurple
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "• Artículos Prohibidos: Queda estrictamente prohibida la venta de falsificaciones, réplicas no autorizadas, artículos robados, productos de higiene usados, medicamentos, drogas o cualquier otro artículo ilegal.\n" +
+                    "\n• Comportamiento en el chat: No toleramos el acoso, la discriminación, los insultos ni el envío de spam o enlaces maliciosos a otros usuarios.\n" +
+                    "\n• Transacciones externas: Está prohibido solicitar o compartir números de teléfono, enlaces externos o métodos de pago alternativos para realizar la compra fuera de FANTASMIKAEH. Esto conlleva la pérdida de la protección de la plataforma.\n" +
+                    "\n• Sanciones: El incumplimiento de estas normas podrá resultar en la ocultación de anuncios o la suspensión definitiva y eliminación de la cuenta de usuario.",
+            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+            color = Color.White
+        )
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
 fun ProfileScreen(
     vm: AppViewModel,
     onRequestNotificationPermission: () -> Unit,
@@ -107,6 +183,7 @@ fun ProfileScreen(
 ) {
     val user = vm.currentUser
     var openSection by remember { mutableStateOf<String?>(null) }
+    var showLegalDialog by remember { mutableStateOf(false) }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) vm.updateProfilePhoto(uri)
     }
@@ -222,7 +299,7 @@ fun ProfileScreen(
                 expanded = openSection == "ayuda",
                 onClick = { openSection = openSection.toggle("ayuda") }
             ) {
-                PlaceholderContent("Escríbenos a fasntasmikaeh@gmail.com")
+                PlaceholderContent("Escríbenos a fantasmikaeh@gmail.com")
             }
 
             ProfileMenuItem(
@@ -231,7 +308,18 @@ fun ProfileScreen(
                 expanded = openSection == "legal",
                 onClick = { openSection = openSection.toggle("legal") }
             ) {
-                PlaceholderContent("FKAEH · Términos, privacidad y uso de la plataforma")
+                Text(
+                    text = "FKAEH · Términos, privacidad y uso de la plataforma",
+                    color = ProfileMuted,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showLegalDialog = true }
+                        .padding(vertical = 12.dp, horizontal = 4.dp)
+                )
             }
 
             Spacer(Modifier.height(18.dp))
@@ -260,9 +348,45 @@ fun ProfileScreen(
             }
 
             Spacer(Modifier.height(18.dp))
+
+            if (showLegalDialog) {
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = { showLegalDialog = false },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    androidx.compose.material3.Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(vertical = 40.dp, horizontal = 16.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color(0xFF161616)
+                    ) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                LegalTermsContent()
+                            }
+                            HorizontalDivider(color = ProfileBorder)
+                            TextButton(
+                                onClick = { showLegalDialog = false },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp)
+                            ) {
+                                Text(
+                                    text = "Cerrar",
+                                    color = customPurple,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         }
     }
-}
+
 
 @Composable
 private fun ProfileHeaderCard(
