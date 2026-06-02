@@ -76,7 +76,8 @@ private data class OfferConversationUi(
 fun ChatScreen(
     vm: AppViewModel,
     onExploreHome: () -> Unit = {},
-    onGoToCart: () -> Unit = {}
+    onGoToCart: () -> Unit = {},
+    onOpenUserProfile: (Int, String, String?) -> Unit = { _, _, _ -> }
 ) {
     val currentUserId = vm.currentUser?.id_usuario
     val conversations = vm.offerThreadsForCurrentUser().map { thread ->
@@ -105,7 +106,20 @@ fun ChatScreen(
             thread = selectedThread,
             isSellerView = selectedThread.sellerId == currentUserId,
             onBack = { vm.closeOfferThread() },
-            onGoToCart = onGoToCart
+            onGoToCart = onGoToCart,
+            onOpenUserProfile = {
+                val profileUserId = if (selectedThread.sellerId == currentUserId) {
+                    selectedThread.buyerId
+                } else {
+                    selectedThread.sellerId
+                }
+                val profileName = if (selectedThread.sellerId == currentUserId) {
+                    selectedThread.buyerName
+                } else {
+                    selectedThread.sellerName
+                }
+                onOpenUserProfile(profileUserId, profileName, selectedThread.counterpartPhotoUrl(currentUserId))
+            }
         )
     } else {
         OfferInboxScreen(
@@ -263,7 +277,8 @@ private fun OfferThreadScreen(
     thread: OfferThread,
     isSellerView: Boolean,
     onBack: () -> Unit,
-    onGoToCart: () -> Unit
+    onGoToCart: () -> Unit,
+    onOpenUserProfile: () -> Unit
 ) {
     val latestOffer = thread.latestOffer()
     Box(modifier = Modifier.fillMaxSize()) {
@@ -285,7 +300,8 @@ private fun OfferThreadScreen(
                 counterpartName = if (isSellerView) thread.buyerName else thread.sellerName,
                 counterpartPhotoUrl = thread.counterpartPhotoUrl(vm.currentUser?.id_usuario),
                 subtitle = thread.productName,
-                onBack = onBack
+                onBack = onBack,
+                onOpenUserProfile = onOpenUserProfile
             )
 
             OfferProductCard(thread = thread, latestOffer = latestOffer)
@@ -337,7 +353,8 @@ private fun OfferHeader(
     counterpartName: String,
     counterpartPhotoUrl: String?,
     subtitle: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenUserProfile: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -357,9 +374,20 @@ private fun OfferHeader(
                     tint = Color.White
                 )
             }
-            AvatarBadge(label = counterpartName, photoUrl = counterpartPhotoUrl, size = 48.dp)
+            AvatarBadge(
+                label = counterpartName,
+                photoUrl = counterpartPhotoUrl,
+                size = 48.dp,
+                modifier = Modifier.clickable(onClick = onOpenUserProfile)
+            )
             Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onOpenUserProfile)
+                    .padding(vertical = 4.dp)
+            ) {
                 Text(
                     text = counterpartName,
                     color = Color.White,
@@ -672,10 +700,10 @@ private fun ProductThumb(product: Producto) {
 }
 
 @Composable
-private fun AvatarBadge(label: String, photoUrl: String? = null, size: Dp) {
+private fun AvatarBadge(label: String, photoUrl: String? = null, size: Dp, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(size)
             .clip(CircleShape)
             .background(customPurple.copy(alpha = 0.18f))
